@@ -1,8 +1,6 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
-#include <stdint.h>
-#include "driver/uart.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_dsp.h"
@@ -11,100 +9,117 @@
 #include "sdmmc_cmd.h"
 #include "esp_vfs_fat.h"
 #include "driver/spi_common.h"
-#include "esp_heap_caps.h"
-#include <unistd.h>
-#include <fcntl.h>
 
+// SD Card Pins
 #define PIN_NUM_MISO  13
 #define PIN_NUM_MOSI  11
 #define PIN_NUM_CLK   12
 #define PIN_NUM_CS    10
 
-#define UART_PORT UART_NUM_0
-#define BUF_SIZE (FFT_SIZE * 2) // 512 samples * 2 bytes/sample = 1024 bytes
-#define FFT_SIZE 512
+#define FFT_SIZE 1024
+#define BUF_SIZE (FFT_SIZE * 2) // 2048 bytes
+#define NUM_BANDS 7
 
-// Allocate with extra padding to avoid buffer overflows
-// Use DRAM-capable allocation
-static float input[FFT_SIZE + 16];
-static float output[FFT_SIZE + 16];
+// Static arrays in fast RAM
+static float fft_workspace[FFT_SIZE * 2]; 
+static float window[FFT_SIZE]; 
+static float band_peaks[NUM_BANDS];
 
-void compute_spectrum()
+// The Terminal Visualizer
+void print_terminal_eq(int *bands)
 {
-    // Clear padding area
-    memset(input + FFT_SIZE, 0, 16 * sizeof(float));  
-    
-    // Apply window to the real N samples
-    dsps_wind_hann_f32(input, FFT_SIZE);
+    printf("\033[H"); // Move cursor to top-left without clearing screen
+    printf("\n==== ESP32 AUDIO VISUALIZER ====\n\n");
 
-    // Perform an N/2 Complex FFT on the N Real samples
-    dsps_fft2r_fc32(input, FFT_SIZE / 2);
-    // Bit reverse the N/2 complex results
-    dsps_bit_rev_fc32(input, FFT_SIZE / 2);
-    // Unpack the N/2 complex results into N/2 + 1 real frequency bins
-    dsps_cplx2reC_fc32(input, FFT_SIZE / 2);
-
-    // Calculate Magnitude. Note: dsps_cplx2reC outputs (FFT_SIZE / 2 + 1) complex numbers
-    // representing the positive frequencies.
-    for (int i = 0; i < FFT_SIZE / 2; i++) {
-        float re = input[2*i];
-        float im = input[2*i+1];
-        output[i] = sqrtf(re*re + im*im);
+    for (int row = 8; row > 0; row--) {
+        printf(" ");
+        for (int b = 0; b < NUM_BANDS; b++) {
+            if (bands[b] >= row) {
+                // Exactly 5 characters wide to match the labels below
+                printf(" ██  "); 
+            } else {        
+                // Exactly 5 spaces wide
+                printf("     "); 
+            }
+        }
+        printf("\n");
     }
+    printf(" -----------------------------------\n");
+    // Aligned perfectly to a 5-character grid
+    printf(" SUB  BAS  L-M  MID  H-M  PRS  TRB  \n");
 }
 
-void print_bands()
-{
-    int bands[7] = {0};
-    int band_size = (FFT_SIZE / 2) / 7;
+// Pre-calculated MSGEQ7 bin boundaries for 44.1kHz / 1024 FFT
+// These centers match: 63Hz, 160Hz, 400Hz, 1kHz, 2.5kHz, 6.25kHz, 16kHz
+const int msg_limits[8] = {1, 2, 5, 12, 30, 80, 200, 450};
 
+void process_audio_frame(uint8_t *pcm_data)
+{
+    // 1. PCM to Float & DC Offset Removal
+    float dc_offset = 0.0f;
+    for (int i = 0; i < FFT_SIZE; i++) {
+        int16_t sample = (pcm_data[2 * i + 1] << 8) | pcm_data[2 * i];
+        float val = (float)sample / 32768.0f;
+        fft_workspace[i * 2] = val;
+        dc_offset += val;
+    }
+    dc_offset /= FFT_SIZE;
+
+    // 2. Apply Window and Prepare Complex Workspace
+    for (int i = 0; i < FFT_SIZE; i++) {
+        fft_workspace[i * 2] = (fft_workspace[i * 2] - dc_offset) * window[i];
+        fft_workspace[i * 2 + 1] = 0.0f;
+    }
+
+    // 3. Perform FFT
+    dsps_fft2r_fc32(fft_workspace, FFT_SIZE);
+    dsps_bit_rev_fc32(fft_workspace, FFT_SIZE);
+
+    int current_bands[7] = {0};
+
+    // 4. Process the 7 MSGEQ7 Bands
     for (int b = 0; b < 7; b++) {
-        float sum = 0;
-        // Start from i=1 to skip the DC offset (0Hz bin) which ruins the first band
-        int start_idx = (b == 0) ? 1 : b * band_size; 
-        for (int i = start_idx; i < (b+1) * band_size; i++) {
-            sum += output[i];
+        float peak_mag = 0.0f;
+        int start = msg_limits[b];
+        int end = msg_limits[b + 1];
+
+        for (int i = start; i < end; i++) {
+            float re = fft_workspace[2 * i];
+            float im = fft_workspace[2 * i + 1];
+            float mag = sqrtf(re * re + im * im);
+            if (mag > peak_mag) peak_mag = mag;
         }
 
-        float avg = sum / band_size;
+        // 5. Convert to DB & Normalize
+        float normalized = peak_mag / 256.0f;
+        float db = 20.0f * log10f(normalized + 1e-6f);
 
-        // Since we normalized the input to [-1.0, 1.0], magnitudes will be much smaller.
-        // A Hann window scales the max magnitude to roughly FFT_SIZE / 4 (around 128).
-        // Adjust the denominator to tweak sensitivity.
-        int level = (int)(avg * 8.0f / 15.0f); 
-        if (level > 8) level = 8;
-        if (level < 0) level = 0;
+        // Map -45dB to 0dB onto 0-8 scale
+        float float_level = (db + 45.0f) * (8.0f / 45.0f);
+        if (float_level < 0.0f) float_level = 0.0f;
+        if (float_level > 8.0f) float_level = 8.0f;
 
-        bands[b] = level;
+        // 6. MSGEQ7 Decay Emulation: Each "read" decays by ~10% 
+        // if the new signal is lower than the previous peak.
+        if (float_level > band_peaks[b]) {
+            band_peaks[b] = float_level;
+        } else {
+            band_peaks[b] *= 0.90f; // 10% decay per datasheet 
+        }
+
+        current_bands[b] = (int)(band_peaks[b] + 0.5f);
     }
 
-    printf("Bands: ");
-    for (int i = 0; i < 7; i++) {
-        printf("%d ", bands[i]);
-    }
-    printf("\n");
+    print_terminal_eq(current_bands);
 }
 
 void app_main(void)
 {
-    esp_err_t ret;
+    // Initialize standard FFT and Window
+    dsps_fft2r_init_fc32(NULL, CONFIG_DSP_MAX_FFT_SIZE);
+    dsps_wind_hann_f32(window, FFT_SIZE);
 
-    // Clear buffers before use
-    memset(input, 0, (FFT_SIZE + 16) * sizeof(float));
-    memset(output, 0, (FFT_SIZE + 16) * sizeof(float));
-
-    // Initialize FFT
-    dsps_fft2r_init_fc32(NULL, FFT_SIZE);
-
-    printf("FFT initialized. Free heap: %ld bytes\n", esp_get_free_heap_size());
-
-    // Give time for system to initialize
-    vTaskDelay(pdMS_TO_TICKS(1000));
-
-    printf("Initializing SD card...\n");
-    vTaskDelay(pdMS_TO_TICKS(500));
-
-    // Initialize SPI bus for SD card
+    // Mount SD Card
     spi_bus_config_t bus_cfg = {
         .mosi_io_num = PIN_NUM_MOSI,
         .miso_io_num = PIN_NUM_MISO,
@@ -113,133 +128,43 @@ void app_main(void)
         .quadhd_io_num = -1,
         .max_transfer_sz = 4000,
     };
-    spi_host_device_t host_id = SPI2_HOST;
-    ret = spi_bus_initialize(host_id, &bus_cfg, SDSPI_DEFAULT_DMA);
-    if (ret != ESP_OK) {
-        printf("Failed to initialize SPI bus: %s\n", esp_err_to_name(ret));
-        return;
-    }
+    spi_bus_initialize(SPI2_HOST, &bus_cfg, SDSPI_DEFAULT_DMA);
 
-    printf("Mounting SD card...\n");
-    vTaskDelay(pdMS_TO_TICKS(500));
-
-    // Initialize SD card
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+    host.slot = SPI2_HOST;
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
     slot_config.gpio_cs = PIN_NUM_CS;
-    slot_config.host_id = host_id;
+    slot_config.host_id = host.slot;
 
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = false,
-        .max_files = 1,
-        .allocation_unit_size = 16 * 1024
+        .max_files = 1
     };
-
     sdmmc_card_t* card;
-    ret = esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot_config, &mount_config, &card);
-    if (ret != ESP_OK) {
-        printf("Failed to mount SD card: %s\n", esp_err_to_name(ret));
+    esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot_config, &mount_config, &card);
+
+    FILE *f = fopen("/sdcard/song1.pcm", "rb");
+    if (f == NULL) {
+        printf("Failed to open song1.pcm\n");
         return;
     }
 
-    printf("SD card mounted successfully\n");
-    vTaskDelay(pdMS_TO_TICKS(500));
-
-    // Use low-level file operations (open/read/close) to avoid FatFS stdio issues
-    printf("Opening PCM file...\n");
-    int fd = open("/sdcard/song1.pcm", O_RDONLY);
-    if (fd < 0) {
-        printf("Failed to open song1.pcm, trying song.pcm\n");
-        fd = open("/sdcard/song.pcm", O_RDONLY);
-        if (fd < 0) {
-            printf("Failed to open PCM file\n");
-            esp_vfs_fat_sdcard_unmount("/sdcard", card);
-            return;
-        }
-    }
-    printf("PCM file opened with fd=%d\n", fd);
-    vTaskDelay(pdMS_TO_TICKS(500));
-
-    // Read entire file into heap buffer (in PSRAM)
-    printf("Reading entire file into memory...\n");
-    uint8_t* file_buffer = (uint8_t*)malloc(2 * 1024 * 1024); // 2MB buffer in PSRAM
-    if (!file_buffer) {
-        printf("Failed to allocate file buffer\n");
-        close(fd);
-        esp_vfs_fat_sdcard_unmount("/sdcard", card);
-        return;
-    }
-
-    ssize_t total_read = 0;
-    ssize_t len;
-    while (1) {
-        len = read(fd, file_buffer + total_read, 65536); // Read in 64KB chunks
-        if (len <= 0) {
-            break; // EOF or error
-        }
-        total_read += len;
-        if (total_read >= 2 * 1024 * 1024) {
-            printf("File buffer full\n");
-            break;
-        }
-    }
-    close(fd);
-    esp_vfs_fat_sdcard_unmount("/sdcard", card);
+    // Allocate buffer on the heap
+    uint8_t *read_buffer = (uint8_t *)malloc(BUF_SIZE);
     
-    printf("File read complete: %d bytes\n", total_read);
-    vTaskDelay(pdMS_TO_TICKS(1000)); // Wait before processing
+    // Clear the terminal screen once before we start drawing
+    printf("\033[2J");
 
-    // Now process the buffer without any more SD card access
-    uint8_t* data = (uint8_t*)malloc(BUF_SIZE);
-    if (!data) {
-        printf("Failed to allocate processing buffer\n");
-        free(file_buffer);
-        return;
+    // The simplest possible reading loop
+    while (fread(read_buffer, 1, BUF_SIZE, f) == BUF_SIZE) {
+        process_audio_frame(read_buffer);
+        
+        // Wait exactly 23ms (the time it takes to play 1024 samples)
+        vTaskDelay(pdMS_TO_TICKS(23)); 
     }
 
-    int read_count = 0;
-    int buffer_pos = 0;
-
-    while (buffer_pos < total_read) {
-        vTaskDelay(pdMS_TO_TICKS(100)); // Delay BEFORE processing
-        
-        // Copy from file buffer to processing buffer
-        int remaining = total_read - buffer_pos;
-        int to_copy = (remaining > BUF_SIZE) ? BUF_SIZE : remaining;
-        memcpy(data, file_buffer + buffer_pos, to_copy);
-        buffer_pos += to_copy;
-
-        read_count++;
-        printf("Processing chunk %d: %d bytes\n", read_count, to_copy);
-
-        // This logic is now mathematically correct for the new file!
-        int samples = to_copy / 2; // 2 bytes per 16-bit mono sample
-        for (int i = 0; i < samples && i < FFT_SIZE; i++) {
-            // Read Little-Endian 16-bit mono sample
-            int16_t s = (data[2*i+1] << 8) | data[2*i];
-            
-            // Normalize to float between -1.0 and 1.0
-            input[i] = (float)s / 32768.0f; 
-        }
-        
-        // Pad unused samples with zeros
-        for (int i = samples; i < FFT_SIZE; i++) {
-            input[i] = 0;
-        }
-
-        printf("Chunk %d: Free heap before FFT: %ld bytes\n", read_count, esp_get_free_heap_size());
-        printf("About to compute spectrum for chunk %d\n", read_count);
-        compute_spectrum();
-        printf("Spectrum computed successfully. Free heap after: %ld bytes\n", esp_get_free_heap_size());
-        print_bands();
-
-        if (read_count > 200) {
-            printf("Stopping after 200 chunks for safety\n");
-            break;
-        }
-    }
-
-    free(data);
-    free(file_buffer);
-    printf("Playback finished\n");
+    free(read_buffer);
+    fclose(f);
+    esp_vfs_fat_sdcard_unmount("/sdcard", card);
+    printf("\nPlayback finished\n");
 }

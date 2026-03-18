@@ -14,7 +14,7 @@
     "board/esp32s3-builtin.cfg"
   ],
   "idf.port": "/dev/tty.usbserial-110",
-  "idf.currentSetup": "/Users/maritsnijder/.espressif/v5.5.3/esp-idf",
+  "idf.currentSetup": "C:\\esp\\v5.5.3\\esp-idf",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32s3"
   },
@@ -29,5 +29,6 @@
     "IDF_PATH": "/Users/maritsnijder/.espressif/v5.5.3/esp-idf",
     "IDF_TARGET": "esp32s3",
     "PATH": "/Users/maritsnijder/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20251107/xtensa-esp-elf/bin:${env:PATH}"
-  }
+  },
+  "idf.portWin": "COM7"
 }
