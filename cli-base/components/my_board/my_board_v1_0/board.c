@@ -29,10 +29,6 @@
 #include "periph_sdcard.h"
 #include "periph_adc_button.h"
 
-#include "board_def.h"
-#include "driver/spi_common.h"
-#include "esp_vfs_fat.h"
-
 static const char *TAG = "AUDIO_BOARD";
 
 static audio_board_handle_t board_handle = 0;
@@ -77,59 +73,14 @@ esp_err_t audio_board_key_init(esp_periph_set_handle_t set)
 
 esp_err_t audio_board_sdcard_init(esp_periph_set_handle_t set, periph_sdcard_mode_t mode)
 {
-    esp_err_t ret = -1;
-    if (mode == SD_MODE_SPI) {
-        // SPI bus config
-        spi_bus_config_t bus_cfg = {
-            .mosi_io_num = ESP_SPI_MOSI,
-            .miso_io_num = ESP_SPI_MISO,
-            .sclk_io_num = ESP_SPI_CLK,
-            .quadwp_io_num = -1,
-            .quadhd_io_num = -1,
-            .max_transfer_sz = 4000,
-        };
-
-        ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &bus_cfg, SDSPI_DEFAULT_DMA));
-
-        // SD SPI config
-        sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-        host.slot = SPI2_HOST;
-
-        sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
-        slot_config.gpio_cs = 10;
-        slot_config.host_id = host.slot;
-
-        // Mount config
-        esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-            .format_if_mount_failed = false,
-            .max_files = 5,
-            .allocation_unit_size = 16 * 1024,
-        };
-
-        sdmmc_card_t *card;
-
-        esp_err_t ret = esp_vfs_fat_sdspi_mount(
-            "/sdcard",
-            &host,
-            &slot_config,
-            &mount_config,
-            &card
-        );
-
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to mount SD card via SPI");
-        }
-    }
-    else {
-        periph_sdcard_cfg_t sdcard_cfg = {
-            .root = "/sdcard",
-            .card_detect_pin = get_sdcard_intr_gpio(), // GPIO_NUM_34
-        };
-        esp_periph_handle_t sdcard_handle = periph_sdcard_init(&sdcard_cfg);
-        ret = esp_periph_start(set, sdcard_handle);
-        while (!periph_sdcard_is_mounted(sdcard_handle)) {
-            vTaskDelay(500 / portTICK_PERIOD_MS);
-        }
+    periph_sdcard_cfg_t sdcard_cfg = {
+        .root = "/sdcard",
+        .card_detect_pin = get_sdcard_intr_gpio(), // GPIO_NUM_34
+    };
+    esp_periph_handle_t sdcard_handle = periph_sdcard_init(&sdcard_cfg);
+    esp_err_t ret = esp_periph_start(set, sdcard_handle);
+    while (!periph_sdcard_is_mounted(sdcard_handle)) {
+        vTaskDelay(500 / portTICK_PERIOD_MS);
     }
     return ret;
 }

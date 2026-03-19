@@ -7,6 +7,7 @@
    CONDITIONS OF ANY KIND, either express or implied.
 */
 #include <string.h>
+#include "esp_log_level.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -25,9 +26,8 @@
 #include "input_key_service.h"
 #include "board.h"
 
-#include "driver/spi_common.h"
-#include "esp_vfs_fat.h"
-
+#include "periph_sdcard.h"
+#include "playlist.h"
 #include "sdcard_list.h"
 #include "sdcard_scan.h"
 
@@ -116,6 +116,77 @@ void sdcard_url_save_cb(void *user_data, char *url)
     }
 }
 
+static void console_task(void* param) {
+    char cmd[32];
+
+    while (1) {
+        printf("\nEnter command (play, pause, next, vol+, vol-):\n> ");
+        fflush(stdout);
+
+        if (fgets(cmd, sizeof(cmd), stdin) != NULL) {
+
+            // Remove newline
+            cmd[strcspn(cmd, "\r\n")] = 0;
+
+            if (strcmp(cmd, "play") == 0) {
+                printf("▶ Play\n");
+                audio_pipeline_run(pipeline);
+
+            } else if (strcmp(cmd, "pause") == 0) {
+                printf("⏸ Pause\n");
+                audio_pipeline_pause(pipeline);
+
+            } else if (strcmp(cmd, "resume") == 0) {
+                printf("⏵ Resume\n");
+                audio_pipeline_resume(pipeline);
+
+            } else if (strcmp(cmd, "next") == 0) {
+                printf("⏭ Next track\n");
+
+                char *url = NULL;
+                audio_pipeline_stop(pipeline);
+                audio_pipeline_wait_for_stop(pipeline);
+                audio_pipeline_terminate(pipeline);
+
+                sdcard_list_next(sdcard_list_handle, 1, &url);
+                printf("Now playing: %s\n", url);
+
+                audio_element_set_uri(fatfs_stream_reader, url);
+                audio_pipeline_reset_ringbuffer(pipeline);
+                audio_pipeline_reset_elements(pipeline);
+                audio_pipeline_run(pipeline);
+
+            } else if (strcmp(cmd, "vol+") == 0) {
+                int vol;
+                audio_board_handle_t board = (audio_board_handle_t)param;
+                audio_hal_get_volume(board->audio_hal, &vol);
+                vol = (vol + 10 > 100) ? 100 : vol + 10;
+                audio_hal_set_volume(board->audio_hal, vol);
+                printf("Volume: %d%%\n", vol);
+
+            } else if (strcmp(cmd, "vol-") == 0) {
+                int vol;
+                audio_board_handle_t board = (audio_board_handle_t)param;
+                audio_hal_get_volume(board->audio_hal, &vol);
+                vol = (vol - 10 < 0) ? 0 : vol - 10;
+                audio_hal_set_volume(board->audio_hal, vol);
+                printf("Volume: %d%%\n", vol);
+
+            } else if (strcmp(cmd, "list") == 0) {
+                printf("\n--- Track List ---\n");
+
+                sdcard_list_show(sdcard_list_handle);
+
+                printf("------------------\n");
+            } else {
+                printf("Unknown command\n");
+            }
+        }
+
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
+    }
+}
+
 void app_main(void)
 {
     esp_log_level_set("*", ESP_LOG_WARN);
@@ -127,50 +198,7 @@ void app_main(void)
 
     ESP_LOGI(TAG, "[1.1] Initialize and start peripherals");
     audio_board_key_init(set);
-
-    ESP_LOGI(TAG, "[1.1] Initialize SPI SD card");
-
-    // SPI bus config
-    spi_bus_config_t bus_cfg = {
-        .mosi_io_num = 11,
-        .miso_io_num = 13,
-        .sclk_io_num = 12,
-        .quadwp_io_num = -1,
-        .quadhd_io_num = -1,
-        .max_transfer_sz = 4000,
-    };
-
-    ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &bus_cfg, SDSPI_DEFAULT_DMA));
-
-    // SD SPI config
-    sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-    host.slot = SPI2_HOST;
-
-    sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
-    slot_config.gpio_cs = 10;
-    slot_config.host_id = host.slot;
-
-    // Mount config
-    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-        .format_if_mount_failed = false,
-        .max_files = 5,
-        .allocation_unit_size = 16 * 1024,
-    };
-
-    sdmmc_card_t *card;
-
-    esp_err_t ret = esp_vfs_fat_sdspi_mount(
-        "/sdcard",
-        &host,
-        &slot_config,
-        &mount_config,
-        &card
-    );
-
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to mount SD card via SPI");
-        return;
-    }
+    audio_board_sdcard_init(set, SD_MODE_SPI);
 
     ESP_LOGI(TAG, "[1.2] Set up a sdcard playlist and scan sdcard music save to it");
     sdcard_list_create(&sdcard_list_handle);
@@ -178,8 +206,8 @@ void app_main(void)
     sdcard_list_show(sdcard_list_handle);
 
     ESP_LOGI(TAG, "[ 2 ] Start codec chip");
-    // audio_board_handle_t board_handle = audio_board_init();
-    // audio_hal_ctrl_codec(board_handle->audio_hal, AUDIO_HAL_CODEC_MODE_DECODE, AUDIO_HAL_CTRL_START);
+    audio_board_handle_t board_handle = audio_board_init();
+    audio_hal_ctrl_codec(board_handle->audio_hal, AUDIO_HAL_CODEC_MODE_DECODE, AUDIO_HAL_CTRL_START);
 
     ESP_LOGI(TAG, "[ 3 ] Create and start input key service");
     input_key_service_info_t input_key_info[] = INPUT_KEY_DEFAULT_INFO();
@@ -250,6 +278,8 @@ void app_main(void)
     audio_pipeline_reset_ringbuffer(pipeline);
     audio_pipeline_reset_elements(pipeline);
     audio_pipeline_run(pipeline);
+
+    xTaskCreate(console_task, "console_task", 4096, board_handle, 5, NULL);
 
     while (1) {
         /* Handle event interface messages from pipeline
