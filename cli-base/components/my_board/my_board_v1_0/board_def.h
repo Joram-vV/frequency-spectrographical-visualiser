@@ -40,11 +40,6 @@
 
 #define BOARD_PA_GAIN             (10) /* Power amplifier gain defined by board (dB) */
 
-#define ESP_SPI_SD_CS   10
-#define ESP_SPI_MOSI    11
-#define ESP_SPI_CLK     12
-#define ESP_SPI_MISO    13
-
 #define SDCARD_PWR_CTRL             -1
 #define ESP_SD_PIN_CLK              -1
 #define ESP_SD_PIN_CMD              -1
