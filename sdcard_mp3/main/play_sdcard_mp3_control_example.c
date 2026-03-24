@@ -31,6 +31,8 @@
 #include "sdcard_list.h"
 #include "sdcard_scan.h"
 
+#include "cli.h"
+
 static const char *TAG = "SDCARD_MP3_CONTROL_EXAMPLE";
 
 audio_pipeline_handle_t pipeline;
@@ -116,77 +118,6 @@ void sdcard_url_save_cb(void *user_data, char *url)
     }
 }
 
-static void console_task(void* param) {
-    char cmd[32];
-
-    while (1) {
-        printf("\nEnter command (play, pause, next, vol+, vol-):\n> ");
-        fflush(stdout);
-
-        if (fgets(cmd, sizeof(cmd), stdin) != NULL) {
-
-            // Remove newline
-            cmd[strcspn(cmd, "\r\n")] = 0;
-
-            if (strcmp(cmd, "play") == 0) {
-                printf("▶ Play\n");
-                audio_pipeline_run(pipeline);
-
-            } else if (strcmp(cmd, "pause") == 0) {
-                printf("⏸ Pause\n");
-                audio_pipeline_pause(pipeline);
-
-            } else if (strcmp(cmd, "resume") == 0) {
-                printf("⏵ Resume\n");
-                audio_pipeline_resume(pipeline);
-
-            } else if (strcmp(cmd, "next") == 0) {
-                printf("⏭ Next track\n");
-
-                char *url = NULL;
-                audio_pipeline_stop(pipeline);
-                audio_pipeline_wait_for_stop(pipeline);
-                audio_pipeline_terminate(pipeline);
-
-                sdcard_list_next(sdcard_list_handle, 1, &url);
-                printf("Now playing: %s\n", url);
-
-                audio_element_set_uri(fatfs_stream_reader, url);
-                audio_pipeline_reset_ringbuffer(pipeline);
-                audio_pipeline_reset_elements(pipeline);
-                audio_pipeline_run(pipeline);
-
-            } else if (strcmp(cmd, "vol+") == 0) {
-                int vol;
-                audio_board_handle_t board = (audio_board_handle_t)param;
-                audio_hal_get_volume(board->audio_hal, &vol);
-                vol = (vol + 10 > 100) ? 100 : vol + 10;
-                audio_hal_set_volume(board->audio_hal, vol);
-                printf("Volume: %d%%\n", vol);
-
-            } else if (strcmp(cmd, "vol-") == 0) {
-                int vol;
-                audio_board_handle_t board = (audio_board_handle_t)param;
-                audio_hal_get_volume(board->audio_hal, &vol);
-                vol = (vol - 10 < 0) ? 0 : vol - 10;
-                audio_hal_set_volume(board->audio_hal, vol);
-                printf("Volume: %d%%\n", vol);
-
-            } else if (strcmp(cmd, "list") == 0) {
-                printf("\n--- Track List ---\n");
-
-                sdcard_list_show(sdcard_list_handle);
-
-                printf("------------------\n");
-            } else {
-                printf("Unknown command\n");
-            }
-        }
-
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
-    }
-}
-
 void app_main(void)
 {
     esp_log_level_set("*", ESP_LOG_WARN);
@@ -215,7 +146,7 @@ void app_main(void)
     input_cfg.handle = set;
     periph_service_handle_t input_ser = input_key_service_create(&input_cfg);
     input_key_service_add_key(input_ser, input_key_info, INPUT_KEY_NUM);
-    // periph_service_set_callback(input_ser, input_key_service_cb, (void *)board_handle);
+    periph_service_set_callback(input_ser, input_key_service_cb, (void *)board_handle);
 
     ESP_LOGI(TAG, "[4.0] Create audio pipeline for playback");
     audio_pipeline_cfg_t pipeline_cfg = DEFAULT_AUDIO_PIPELINE_CONFIG();
@@ -269,17 +200,7 @@ void app_main(void)
     ESP_LOGW(TAG, "      [Play] to start, pause and resume, [Set] next song.");
     ESP_LOGW(TAG, "      [Vol-] or [Vol+] to adjust volume.");
 
-    audio_pipeline_stop(pipeline);
-    audio_pipeline_wait_for_stop(pipeline);
-    audio_pipeline_terminate(pipeline);
-    sdcard_list_current(sdcard_list_handle, &url);
-    ESP_LOGW(TAG, "URL: %s", url);
-    audio_element_set_uri(fatfs_stream_reader, url);
-    audio_pipeline_reset_ringbuffer(pipeline);
-    audio_pipeline_reset_elements(pipeline);
-    audio_pipeline_run(pipeline);
-
-    xTaskCreate(console_task, "console_task", 4096, board_handle, 5, NULL);
+    init_cli(pipeline, i2s_stream_writer, fatfs_stream_reader, sdcard_list_handle, board_handle);
 
     while (1) {
         /* Handle event interface messages from pipeline
