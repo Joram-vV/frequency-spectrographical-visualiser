@@ -11,7 +11,6 @@
 #include "console.h"
 #include "visualizer.h"
 #include "audio_control.h"
-#include "cli_control.h"
 
 static const char *TAG = "[MAIN]";
 static playlist_operator_handle_t sdcard_list_handle = NULL;
@@ -45,8 +44,8 @@ void app_main(void) {
     // 3. Modules Initialization
     visualizer_init();
     audio_control_init();
-    console_init();
-    cli_control_init(board_handle, sdcard_list_handle);
+    console_init(board_handle, sdcard_list_handle);
+    // cli_control_init(board_handle, sdcard_list_handle);
 
     xTaskCreate(visualizer_task, "visualizer_task", 4096, NULL, 5, NULL);
 
@@ -56,6 +55,8 @@ void app_main(void) {
     audio_pipeline_set_listener(audio_control_get_pipeline(), evt);
 
     ESP_LOGI(TAG, "System Ready. Waiting for commands.");
+
+    xTaskCreate(console_task, "console_task", 4096, NULL, 4, NULL);
 
     // 5. Main Event Loop
     while (1) {

@@ -23,6 +23,7 @@
 #include "board.h"
 #include "playlist.h"
 #include "audio_control.h"
+#include "sdcard_list.h"
 
 /*
  * We warn if a secondary serial console is enabled. A secondary serial console is always output-only and
@@ -46,6 +47,9 @@ static const char* TAG = "CONSOLE";
 
 #define MOUNT_PATH "/data"
 #define HISTORY_PATH MOUNT_PATH "/history.txt"
+
+static audio_board_handle_t board;
+static playlist_operator_handle_t playlist;
 
 /** temporary buffer used for command line parsing */
 // static char *s_tmp_line_buf;
@@ -77,28 +81,52 @@ static void initialize_nvs(void)
     ESP_ERROR_CHECK(err);
 }
 
-static int print_kaas(int argc, char **argv){
-    printf("kaas\n");
-    return 0;
-}
-
 static int play_mp3(int argc, char **argv){
 
-    printf("You have entered %d arguments:\n", argc);
+    // printf("You have entered %d arguments:\n", argc);
 
-    for (int i = 0; i < argc; i++) {
-        printf("%s\n", argv[i]);
-    }
+    // for (int i = 0; i < argc; i++) {
+    //     printf("%s\n", argv[i]);
+    // }
 
     if (argc != 2) {
-        free(argv);
         return ESP_ERR_INVALID_ARG;
     }
 
     char url[256];
-    get_url_from_filename(argv[1], (char *) url, sizeof(url));
+    if(get_url_from_filename(argv[1], (char *) url, sizeof(url))){
+        return ESP_ERR_ADF_NOT_FOUND;
+    }
     audio_control_play_track(url);
+    return 0;
+}
 
+static int skip_song(int argc, char ** argv){
+    printf("\n[ INFO ] Skipping to next track...\n");
+    char *url = NULL;
+    sdcard_list_next(playlist, 1, &url);
+    audio_control_play_track(url);
+    return 0;
+}
+
+static int list_songs(int argc, char ** argv){
+    printf("\n--- SD Card Playlist ---\n");
+    sdcard_list_show(playlist);
+    return 0;
+}
+
+static int pause_song(int argc, char ** argv){
+    audio_control_pause();
+    return 0;
+}
+
+static int resume_song(int argc, char ** argv){
+    audio_control_resume();
+    return 0;
+}
+
+static int stop_song(int argc, char ** argv){
+    audio_control_stop();
     return 0;
 }
 
@@ -106,15 +134,7 @@ void register_commands(void){
 
     /* Register commands */
     esp_console_register_help_command();
-
-    const esp_console_cmd_t cmd_kaas = {
-        .command = "print_kaas",
-        .help = "print het woord 'kaas'",
-        .hint = NULL,
-        .func = &print_kaas,
-    };
-    ESP_ERROR_CHECK( esp_console_cmd_register(&cmd_kaas) );
-
+    
     const esp_console_cmd_t cmd_play = {
         .command = "play",
         .help = "play specified song",
@@ -123,6 +143,46 @@ void register_commands(void){
     };
     ESP_ERROR_CHECK( esp_console_cmd_register(&cmd_play) );
 
+
+    const esp_console_cmd_t cmd_pause = {
+        .command = "pause",
+        .help = "pause the song playing",
+        .func = &pause_song
+    };
+    ESP_ERROR_CHECK( esp_console_cmd_register(&cmd_pause) );
+
+
+    const esp_console_cmd_t cmd_resume = {
+        .command = "resume",
+        .help = "resume the song playing",
+        .func = &resume_song
+    };
+    ESP_ERROR_CHECK( esp_console_cmd_register(&cmd_resume) );
+
+
+    const esp_console_cmd_t cmd_stop = {
+        .command = "stop",
+        .help = "stop the song playing",
+        .func = &stop_song
+    };
+    ESP_ERROR_CHECK( esp_console_cmd_register(&cmd_stop) );
+
+
+    const esp_console_cmd_t cmd_skip = {
+        .command = "skip",
+        .help = "skip the song playing",
+        .func = &skip_song
+    };
+    ESP_ERROR_CHECK( esp_console_cmd_register(&cmd_skip) );
+
+
+    const esp_console_cmd_t cmd_list_songs = {
+        .command = "list_songs",
+        .help = "list available songs on the sd card",
+        .func = &list_songs
+    };
+    ESP_ERROR_CHECK( esp_console_cmd_register(&cmd_list_songs) );
+    
     register_system_common();
 #if SOC_LIGHT_SLEEP_SUPPORTED
     register_system_light_sleep();
@@ -133,12 +193,15 @@ void register_commands(void){
 #if (CONFIG_ESP_WIFI_ENABLED || CONFIG_ESP_HOST_WIFI_ENABLED)
     register_wifi();
 #endif
-    register_nvs();
+    // register_nvs();
 
 }
 
-void console_init(void* param)
+void console_init(audio_board_handle_t board_handle, playlist_operator_handle_t sdcard_list_handle)
 {
+    board = board_handle;
+    playlist = sdcard_list_handle;
+    
     initialize_nvs();
     
     #if CONFIG_CONSOLE_STORE_HISTORY
