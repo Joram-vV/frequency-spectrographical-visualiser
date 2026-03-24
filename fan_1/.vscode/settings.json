@@ -3,7 +3,11 @@
   "idf.openOcdConfigs": [
     "board/esp32s3-builtin.cfg"
   ],
+<<<<<<< Updated upstream:fan_1/.vscode/settings.json
   "idf.port": "/dev/tty.usbmodem5B5E0816051",
+=======
+  "idf.port": "/dev/tty.usbserial-110",
+>>>>>>> Stashed changes:Scherm/.vscode/settings.json
   "idf.currentSetup": "/Users/maritsnijder/.espressif/v5.5.3/esp-idf",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32s3",

@@ -1,0 +1,3 @@
+# ESP32-S3-DevKitC v1.1 uses GPIO38 for the on-board LED in the blink example.
+# For this fan project, set your fan control GPIO here.
+CONFIG_FAN_GPIO=38
