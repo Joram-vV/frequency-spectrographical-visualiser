@@ -8,14 +8,15 @@
 #include "sdcard_list.h"
 #include "filter_resample.h"
 
+#include "console.h"
 #include "visualizer.h"
 #include "audio_control.h"
 #include "cli_control.h"
 
-static const char *TAG = "MAIN";
+static const char *TAG = "[MAIN]";
 static playlist_operator_handle_t sdcard_list_handle = NULL;
 
-static void sdcard_url_save_cb(void *user_data, char *url) {
+static void sdcard_url_save_callback(void *user_data, char *url) {
     playlist_operator_handle_t sdcard_handle = (playlist_operator_handle_t)user_data;
     sdcard_list_save(sdcard_handle, url);
 }
@@ -28,14 +29,14 @@ void app_main(void) {
 
     ESP_LOGI(TAG, "Initializing System...");
 
-    // 1. Peripherals & SD Card
+    // peripherals & SD card
     esp_periph_config_t periph_cfg = DEFAULT_ESP_PERIPH_SET_CONFIG();
     esp_periph_set_handle_t set = esp_periph_set_init(&periph_cfg);
     audio_board_key_init(set);
     audio_board_sdcard_init(set, SD_MODE_SPI);
 
     sdcard_list_create(&sdcard_list_handle);
-    sdcard_scan(sdcard_url_save_cb, "/sdcard", 0, (const char *[]) {"mp3"}, 1, sdcard_list_handle);
+    sdcard_scan(sdcard_url_save_callback, "/sdcard", 0, (const char *[]) {"mp3"}, 1, sdcard_list_handle);
 
     // 2. Audio Hardware
     audio_board_handle_t board_handle = audio_board_init();
@@ -44,6 +45,7 @@ void app_main(void) {
     // 3. Modules Initialization
     visualizer_init();
     audio_control_init();
+    console_init();
     cli_control_init(board_handle, sdcard_list_handle);
 
     xTaskCreate(visualizer_task, "visualizer_task", 4096, NULL, 5, NULL);

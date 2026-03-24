@@ -4,6 +4,8 @@
 #include "sdcard_list.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_console.h"
+#include "console.h"
 #include <stdio.h>
 #include <string.h>
 #include <fcntl.h>
@@ -11,7 +13,7 @@
 static audio_board_handle_t board;
 static playlist_operator_handle_t playlist;
 
-static void console_task(void* param) {
+static void console_task1(void* param) {
     char cmd[32];
     int cmd_pos = 0;
     bool menu_printed = false; 

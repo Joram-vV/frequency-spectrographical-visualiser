@@ -1,19 +1,9 @@
 {
   "C_Cpp.intelliSenseEngine": "default",
-  "idf.openOcdConfigs": [
-    "board/esp32s3-builtin.cfg"
-  ],
-  "idf.port": "/dev/ttyUSB0",
   "idf.currentSetup": "C:\\esp\\v5.5.3\\esp-idf",
   "idf.customExtraVars": {
-    "IDF_TARGET": "esp32s3"
+    "ADF_PATH": "C:\\Espressif\\tools\\esp-adf"
   },
-  "clangd.path": "/home/joram/.espressif/tools/esp-clang/esp-19.1.2_20250312/esp-clang/bin/clangd",
-  "clangd.arguments": [
-    "--background-index",
-    "--query-driver=**",
-    "--compile-commands-dir=/home/joram/GitHub/frequency-spectrographical-visualiser/mp3-from-sd-and-bands-integration/build"
-  ],
   "idf.flashType": "UART",
-  "idf.portWin": "COM9"
+  "idf.portWin": "COM7"
 }

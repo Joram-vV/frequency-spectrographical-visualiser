@@ -15,7 +15,7 @@ void audio_control_init(void) {
     pipeline = audio_pipeline_init(&pipeline_cfg);
 
     fatfs_stream_cfg_t fatfs_cfg = FATFS_STREAM_CFG_DEFAULT();
-    fatfs_cfg.type = AUDIO_STREAM_READER;
+    fatfs_cfg.type = AUDIO_STREAM_READER;   
     fatfs_stream_reader = fatfs_stream_init(&fatfs_cfg);
 
     mp3_decoder_cfg_t mp3_cfg = DEFAULT_MP3_DECODER_CONFIG();
@@ -82,6 +82,20 @@ void audio_control_stop(void) {
     audio_pipeline_wait_for_stop(pipeline);
     visualizer_stop();
     printf("\n[ INFO ] Stopped.\n");
+}
+
+int get_url_from_filename(char *filename, char * url_buff, int buff_size){
+    char filepath[256];
+    snprintf(filepath, sizeof(filepath), "/sdcard/%s", filename);
+    FILE *f = fopen(filepath, "r");
+    if (f) {
+        fclose(f);
+        snprintf(url_buff, buff_size, "file://sdcard/%s", filename);
+        return 0;
+    } else {
+        printf("\n[ERROR] File not found: %s\n", filename);
+    }
+    return 1;
 }
 
 audio_pipeline_handle_t audio_control_get_pipeline(void) { return pipeline; }
