@@ -1,4 +1,5 @@
 #include "esp_log.h"
+#include "esp_log_level.h"
 #include "esp_peripherals.h"
 #include "board.h"
 #include "periph_sdcard.h"
@@ -25,6 +26,7 @@ void app_main(void) {
     esp_log_level_set(TAG, ESP_LOG_INFO);
     esp_log_level_set("ADC_BTN", ESP_LOG_ERROR);
     esp_log_level_set("AUDIO_EVT", ESP_LOG_ERROR);
+    esp_log_level_set("PLAYLIST_SDCARD", ESP_LOG_INFO);
 
     ESP_LOGI(TAG, "Initializing System...");
 

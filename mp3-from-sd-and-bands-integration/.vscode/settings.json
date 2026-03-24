@@ -1,9 +1,10 @@
 {
   "C_Cpp.intelliSenseEngine": "default",
-  "idf.currentSetup": "C:\\esp\\v5.5.3\\esp-idf",
+  "idf.currentSetup": "/.espressif/v5.5.3/esp-idf",
   "idf.customExtraVars": {
-    "ADF_PATH": "C:\\Espressif\\tools\\esp-adf"
+    "ADF_PATH": "~/.espressif/tools/esp-adf"
   },
   "idf.flashType": "UART",
-  "idf.portWin": "COM7"
+  "idf.portWin": "",
+  "idf.port": "/dev/ttyACM0"
 }

@@ -1,4 +1,6 @@
 #include "audio_control.h"
+#include "audio_element.h"
+#include "sdcard_list.h"
 #include "visualizer.h"
 #include <string.h>
 #include "esp_log.h"

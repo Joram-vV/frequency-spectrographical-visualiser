@@ -88,8 +88,11 @@ static int play_mp3(int argc, char **argv){
     // for (int i = 0; i < argc; i++) {
     //     printf("%s\n", argv[i]);
     // }
-
-    if (argc != 2) {
+    if (argc == 1) {
+        audio_control_resume();
+        return 0;
+    }
+    else if (argc != 2) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -120,11 +123,6 @@ static int pause_song(int argc, char ** argv){
     return 0;
 }
 
-static int resume_song(int argc, char ** argv){
-    audio_control_resume();
-    return 0;
-}
-
 static int stop_song(int argc, char ** argv){
     audio_control_stop();
     return 0;
@@ -137,7 +135,7 @@ void register_commands(void){
     
     const esp_console_cmd_t cmd_play = {
         .command = "play",
-        .help = "play specified song",
+        .help = "resume or play specified <song.mp3>",
         .hint = "<song.mp3>",
         .func = &play_mp3,
     };
@@ -150,14 +148,6 @@ void register_commands(void){
         .func = &pause_song
     };
     ESP_ERROR_CHECK( esp_console_cmd_register(&cmd_pause) );
-
-
-    const esp_console_cmd_t cmd_resume = {
-        .command = "resume",
-        .help = "resume the song playing",
-        .func = &resume_song
-    };
-    ESP_ERROR_CHECK( esp_console_cmd_register(&cmd_resume) );
 
 
     const esp_console_cmd_t cmd_stop = {
