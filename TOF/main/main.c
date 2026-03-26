@@ -9,10 +9,10 @@
 
 static const char *TAG = "I2C_SCANNER";
 
-#define I2C_MASTER_SCL_IO 22
-#define I2C_MASTER_SDA_IO 21
+#define I2C_MASTER_SCL_IO 5
+#define I2C_MASTER_SDA_IO 6
 #define I2C_MASTER_FREQ_HZ 100000 // 100kHz standard mode
-#define VL6180_RESET_IO 19
+#define VL6180_RESET_IO 4
 
 void app_main(void)
 {
