@@ -12,4 +12,4 @@ typedef struct {
 } PIDController;
 
 void pid_init(PIDController* pid, float Kp, float Ki, float Kd, float min_out, float max_out);
-float pid_compute(PIDController* pid, float input, float dt);
+float pid_compute(PIDController* pid, int input, float dt);
