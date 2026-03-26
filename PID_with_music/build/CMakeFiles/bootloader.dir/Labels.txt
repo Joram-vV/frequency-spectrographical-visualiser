@@ -1,0 +1,13 @@
+# Target labels
+ bootloader
+# Source files and their labels
+/Users/maritsnijder/Documents/GitHub/frequency-spectrographical-visualiser/PID_with_music/build/CMakeFiles/bootloader
+/Users/maritsnijder/Documents/GitHub/frequency-spectrographical-visualiser/PID_with_music/build/CMakeFiles/bootloader.rule
+/Users/maritsnijder/Documents/GitHub/frequency-spectrographical-visualiser/PID_with_music/build/CMakeFiles/bootloader-complete.rule
+/Users/maritsnijder/Documents/GitHub/frequency-spectrographical-visualiser/PID_with_music/build/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule
+/Users/maritsnijder/Documents/GitHub/frequency-spectrographical-visualiser/PID_with_music/build/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule
+/Users/maritsnijder/Documents/GitHub/frequency-spectrographical-visualiser/PID_with_music/build/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule
+/Users/maritsnijder/Documents/GitHub/frequency-spectrographical-visualiser/PID_with_music/build/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule
+/Users/maritsnijder/Documents/GitHub/frequency-spectrographical-visualiser/PID_with_music/build/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule
+/Users/maritsnijder/Documents/GitHub/frequency-spectrographical-visualiser/PID_with_music/build/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule
+/Users/maritsnijder/Documents/GitHub/frequency-spectrographical-visualiser/PID_with_music/build/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule
