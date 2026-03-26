@@ -81,8 +81,10 @@ static void play_brightness_sequence_from_txt(void)
         if (token_idx >= 3)
         {
             uint8_t brightness = source_value_to_brightness(third_value);
+            int tes = brightness_to_duty(brightness);
+            printf("tes = %u%%\n", tes);
 
-            ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, brightness_to_duty(brightness)));
+            ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, tes));
             ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
             printf("Brightness: %u%% (source=%ld)\n", brightness, third_value);
             vTaskDelay(pdMS_TO_TICKS(1000));
