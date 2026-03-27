@@ -1,5 +1,6 @@
 idf_component_register(
     SRCS
+        "espnow_transport.c"
         "lvgl_use.c"
         "now_playing_ui.c"
         "playback_controls_ui.c"
@@ -8,11 +9,6 @@ idf_component_register(
         
     INCLUDE_DIRS
         "."
-    REQUIRES
-        driver
-        esp_lcd
-        esp_timer
-        lvgl
 )
 
 # LVGL's sources include "lv_conf.h" directly, so expose main/ to the LVGL component too.
