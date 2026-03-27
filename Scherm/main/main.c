@@ -5,6 +5,7 @@
 #include "espnow_transport.h"
 #include "lvgl_use.h"
 #include "playback_controls_ui.h"
+#include "now_playing_ui.h"
 
 static const char *TAG = "main";
 
@@ -17,14 +18,28 @@ static void espnow_telemetry_task(void *pvParameters) {
             
             if (packet.type != MSG_TYPE_TELEMETRY) continue;
             // If it's a chunk of the playlist
-            if (packet.payload.telemetry.id != TEL_PLAYLIST_CHUNK) continue;
-
-            tel_playlist_t *pl = &packet.payload.telemetry.data.playlist;
-            ESP_LOGI(TAG, "Received Playlist Chunk: %ld to %ld (Total: %ld)", 
-                        pl->start_index, pl->start_index + pl->count - 1, pl->total_songs);
-            
-            // Pass it to the UI thread safely
-            playback_controls_ui_add_playlist_chunk(pl);
+            // if (packet.payload.telemetry.id != TEL_PLAYLIST_CHUNK) continue;
+            switch (packet.payload.telemetry.id) {
+                case TEL_PLAYBACK_STATUS:
+                    {
+                        tel_status_t* status = &packet.payload.telemetry.data.status;
+                        ESP_LOGI(TAG, "State: %ld, current song: %ld, elapsed seconds: %ld, duration seconds: %ld", status->state, status->current_song_index, status->elapsed_seconds, status->duration_seconds);
+                    
+                        // Pass it to the UI thread safely
+                        playback_controls_ui_update_status(status);
+                        break;
+                    }
+                case TEL_PLAYLIST_CHUNK:
+                    {
+                        tel_playlist_t *pl = &packet.payload.telemetry.data.playlist;
+                        ESP_LOGI(TAG, "Received Playlist Chunk: %ld to %ld (Total: %ld)", pl->start_index, pl->start_index + pl->count - 1, pl->total_songs);
+                        
+                        // Pass it to the UI thread safely
+                        playback_controls_ui_add_playlist_chunk(pl);
+                        break;
+                    }
+                default:
+            }
         }
     }
 }

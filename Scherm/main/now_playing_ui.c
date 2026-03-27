@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 
+#include "espnow_protocol.h"
 #include "settings.h"
 
 static lv_obj_t *song_title_label;
@@ -62,6 +63,53 @@ void now_playing_ui_set_song_progress(int32_t elapsed_seconds, int32_t duration_
     lv_label_set_text(song_time_label, time_text);
 }
 
+static void async_status_update_cb(void *arg) {
+    tel_status_t *status = (tel_status_t *)arg;
+    
+    if (status->state == TEL_STATE_STOPPED) {
+        now_playing_ui_set_song_title("Player stopped");
+        now_playing_ui_set_song_progress(0, 0);
+        return;
+    }
+
+    // status->current_song_index; TODO
+
+    now_playing_ui_set_song_progress(status->elapsed_seconds, status->duration_seconds);
+
+    // for (int i = 0; i < status->count; i++) {
+    //     int idx = pl->start_index + i;
+    //     if (idx >= MAX_REMOTE_SONGS) break;
+        
+    //     // Store the string locally
+    //     strncpy(remote_songs[idx], pl->songs[i], MAX_SONG_NAME_LEN);
+        
+    //     // Create the UI button if it doesn't exist yet
+    //     if (song_buttons[idx] == NULL) {
+    //         create_song_item(songs_list_obj, idx, remote_songs[idx]);
+    //     } else {
+    //         // If it exists, just update the text
+    //         lv_label_set_text(song_labels[idx], remote_songs[idx]);
+    //     }
+    // }
+    // actual_song_count = pl->total_songs;
+    
+    // // Free the copied memory now that the UI is updated
+
+    // // --- NEW: Refresh the UI highlighting now that buttons exist ---
+    // set_selected_song(selected_song_index);
+    
+    free(status);
+}
+
+void playback_controls_ui_update_status(const tel_status_t *status) {
+    tel_status_t *status_copy = malloc(sizeof(tel_status_t));
+    if (status_copy) {
+        memcpy(status_copy, status, sizeof(tel_playlist_t));
+        // Tell LVGL to run our callback on its next screen refresh cycle
+        lv_async_call(async_status_update_cb, status_copy);
+    }
+}
+
 void now_playing_ui_create(lv_obj_t *parent)
 {
     song_title_label = lv_label_create(parent);
@@ -77,6 +125,6 @@ void now_playing_ui_create(lv_obj_t *parent)
     song_time_label = lv_label_create(parent);
     lv_obj_align_to(song_time_label, song_progress_bar, LV_ALIGN_OUT_BOTTOM_RIGHT, 0, NOW_PLAYING_TIME_GAP);
 
-    now_playing_ui_set_song_title("Dummy Song");
-    now_playing_ui_set_song_progress(72, 215);
+    now_playing_ui_set_song_title("Player stopped");
+    now_playing_ui_set_song_progress(0, 0);
 }

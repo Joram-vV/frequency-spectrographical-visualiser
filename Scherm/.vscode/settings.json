@@ -1,5 +1,5 @@
 {
-    "idf.currentSetup": "C:\\esp\\v5.5.3\\esp-idf",
+    "idf.currentSetup": "/home/joram/.espressif/v5.5.3/esp-idf",
     "idf.openOcdConfigs": [
         "board/esp32s3-builtin.cfg"
     ],
@@ -7,5 +7,6 @@
         "IDF_TARGET": "esp32s3"
     },
     "idf.flashType": "UART",
-    "idf.portWin": "COM7"
+    "idf.portWin": "COM7",
+    "idf.port": "/dev/ttyUSB1"
 }
