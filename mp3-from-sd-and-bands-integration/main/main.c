@@ -3,8 +3,11 @@
 #include "esp_log_level.h"
 #include "esp_peripherals.h"
 #include "board.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
 #include "periph_sdcard.h"
+#include "portmacro.h"
 #include "sdcard_scan.h"
 #include "audio_event_iface.h"
 
@@ -18,7 +21,6 @@
 #include "espnow_transport.h"
 #include <stdint.h>
 #include <string.h>
-#include "freertos/timers.h"
 
 #include "fan_control.h"
 
@@ -173,55 +175,6 @@ void broadcast_playlist(void) {
     ESP_LOGI(TAG, "Finished broadcasting playlist.");
 }
 
-void send_status(void) {
-    espnow_packet_t packet;
-    packet.magic = ESPNOW_PROTOCOL_MAGIC;
-    packet.type = MSG_TYPE_TELEMETRY;
-    packet.payload.telemetry.id = TEL_PLAYBACK_STATUS;
-
-    // 1. Determine Playback State
-    // You can check the actual state of the I2S writer or use your 'is_playing' flag
-    switch (audio_element_get_state(audio_control_get_i2s_writer())) {
-        case AEL_STATE_RUNNING:
-            packet.payload.telemetry.data.status.state = TEL_STATE_PLAYING;
-            break;
-        case AEL_STATE_PAUSED:
-            packet.payload.telemetry.data.status.state = TEL_STATE_PAUSED;
-            break;
-        default:
-            packet.payload.telemetry.data.status.state = TEL_STATE_STOPPED;
-    }
-
-    // 2. Get Current Song Index
-    // Note: Ensure sdcard_list_get_current_index exists in your sdcard_list.h
-    packet.payload.telemetry.data.status.current_song_index = sdcard_list_get_url_id(sdcard_list_handle);
-
-    // 3. Get Time Information (Elapsed and Duration)
-    audio_element_handle_t mp3_decoder = audio_control_get_mp3_decoder();
-    if (!mp3_decoder) return;
-
-    audio_element_info_t music_info = {0};
-    if (audio_element_getinfo(mp3_decoder, &music_info)) return;
-
-    if (!(music_info.sample_rates > 0 && music_info.channels > 0 && music_info.bits > 0)) return;
-
-    packet.payload.telemetry.data.status.elapsed_seconds = (int32_t) ((uint64_t)music_info.byte_pos / (music_info.sample_rates * music_info.channels * (music_info.bits / 8)));
-    packet.payload.telemetry.data.status.duration_seconds = (int32_t) (music_info.duration / 1000);
-    
-    // 4. Send the Packet
-    espnow_transport_send(&packet);
-    
-    ESP_LOGD(TAG, "Sent Status: State %d, Index %ld, Time %ld/%ld", 
-             packet.payload.telemetry.data.status.state,
-             packet.payload.telemetry.data.status.current_song_index,
-             packet.payload.telemetry.data.status.elapsed_seconds,
-             packet.payload.telemetry.data.status.duration_seconds);
-    
-    ESP_LOGI(TAG, "Finished broadcasting playlist.");
-}
-
-static void status_timer_cb(TimerHandle_t xTimer) { send_status(); }
-
 void app_main(void) {
     esp_log_level_set("*", ESP_LOG_WARN);
     esp_log_level_set(TAG, ESP_LOG_INFO);
@@ -285,10 +238,6 @@ void app_main(void) {
 
     // create console task
     xTaskCreate(console_task, "console_task", 4096, NULL, 4, NULL);
-
-    // create status update task
-    // TimerHandle_t status_timer = xTimerCreate("status_timer", pdMS_TO_TICKS(500), pdTRUE, NULL, status_timer_cb);
-    // if (status_timer != NULL) xTimerStart(status_timer, 0);
 
     // 5. Main Event Loop
     while (1) {
