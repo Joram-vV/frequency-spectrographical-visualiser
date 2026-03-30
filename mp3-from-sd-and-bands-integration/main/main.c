@@ -19,6 +19,15 @@
 #include <stdint.h>
 #include <string.h>
 #include "freertos/timers.h"
+
+#include "fan_control.h"
+
+#include "shared_state.h"
+
+// Actual instantiation of the shared variables
+float shared_target_heights[NUM_BANDS] = {0.0f}; 
+SemaphoreHandle_t shared_state_mutex = NULL;
+
 // #include "VL6180X.h"
 
 // VL6180X vl;
@@ -222,6 +231,13 @@ void app_main(void) {
 
     ESP_LOGI(TAG, "Initializing System...");
 
+    // Initialize the shared state mutex
+    shared_state_mutex = xSemaphoreCreateMutex();
+    if (shared_state_mutex == NULL) {
+        printf("[ERROR] Failed to create shared state mutex!\n");
+        return; // Halt if we can't create the mutex
+    }
+
     // peripherals & SD card
     esp_periph_config_t periph_cfg = DEFAULT_ESP_PERIPH_SET_CONFIG();
     esp_periph_set_handle_t set = esp_periph_set_init(&periph_cfg);
@@ -239,6 +255,11 @@ void app_main(void) {
     visualizer_init();
     audio_control_init();
     console_init(board_handle, sdcard_list_handle);
+
+    fan_control_init();
+
+    // Start the real-time fan control loop!
+    xTaskCreatePinnedToCore(fan_control_task, "fan_control_task", 4096, NULL, 5, NULL, 1);
 
     ESP_LOGI(TAG, "Initializing ESP-NOW Transport...");
     espnow_transport_init();
@@ -266,8 +287,8 @@ void app_main(void) {
     xTaskCreate(console_task, "console_task", 4096, NULL, 4, NULL);
 
     // create status update task
-    TimerHandle_t status_timer = xTimerCreate("status_timer", pdMS_TO_TICKS(500), pdTRUE, NULL, status_timer_cb);
-    if (status_timer != NULL) xTimerStart(status_timer, 0);
+    // TimerHandle_t status_timer = xTimerCreate("status_timer", pdMS_TO_TICKS(500), pdTRUE, NULL, status_timer_cb);
+    // if (status_timer != NULL) xTimerStart(status_timer, 0);
 
     // 5. Main Event Loop
     while (1) {

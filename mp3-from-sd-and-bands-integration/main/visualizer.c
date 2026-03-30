@@ -11,9 +11,11 @@
 #include "mp3_decoder.h"
 #include "raw_stream.h"
 
+#include "shared_state.h"
+
 #define FFT_SIZE 1024
 #define NUM_BANDS 7
-#define VISUALIZER_FPS 20
+#define VISUALIZER_FPS 1
 
 static float fft_workspace[FFT_SIZE * 2]; 
 static float window[FFT_SIZE]; 
@@ -51,11 +53,17 @@ void visualizer_preprocess_file(const char* mp3_url) {
 
     FILE *f_check = fopen(txt_path, "r");
     if (f_check) {
-        fseek(f_check, 0, SEEK_END);
-        long size = ftell(f_check);
-        fclose(f_check);
-        if (size > 0) return; 
-        printf("\n[ WARN ] Found empty/corrupted .txt file. Overwriting...\n");
+        int file_fps = 0;
+        // Read the first line to see if it matches our target FPS
+        if (fscanf(f_check, "%d\n", &file_fps) == 1 && file_fps == TARGET_VISUALIZER_FPS) {
+            fseek(f_check, 0, SEEK_END);
+            long size = ftell(f_check);
+            fclose(f_check);
+            if (size > 10) return; // Valid file with correct FPS and some data
+        } else {
+            fclose(f_check); // Close it so we can overwrite it below
+        }
+        printf("\n[ WARN ] File missing, empty, or wrong FPS. Overwriting...\n");
     }
 
     printf("\n[ INFO ] Pre-processing new track...\n");
@@ -104,9 +112,19 @@ void visualizer_preprocess_file(const char* mp3_url) {
     }
 
     int write_pos = 0;
+    
+    // Write the FPS header as the very first line
+    write_pos += snprintf(write_buf + write_pos, 4096 - write_pos, "%d\n", TARGET_VISUALIZER_FPS);
+
     int bytes_read;
-    float band_peaks_prep[7] = {0}; 
     int loop_counter = 0;
+    
+    // New averaging variables
+    float band_accumulators[7] = {0.0f};
+    int frames_in_window = 0;
+    float time_accumulated = 0.0f;
+    const float target_window_sec = 1.0f / TARGET_VISUALIZER_FPS;
+    const float frame_sec = 1024.0f / 44100.0f;
 
     while ((bytes_read = raw_stream_read(raw_write, pcm_buf, 4096)) > 0) {
         if (bytes_read < 4096) memset(pcm_buf + bytes_read, 0, 4096 - bytes_read);
@@ -129,7 +147,6 @@ void visualizer_preprocess_file(const char* mp3_url) {
         dsps_fft2r_fc32(fft_workspace, FFT_SIZE);
         dsps_bit_rev_fc32(fft_workspace, FFT_SIZE);
 
-        int current_bands[7] = {0};
         for (int b = 0; b < 7; b++) {
             float peak_mag = 0.0f;
             for (int i = msg_limits[b]; i < msg_limits[b + 1]; i++) {
@@ -146,17 +163,32 @@ void visualizer_preprocess_file(const char* mp3_url) {
             if (float_level < 0.0f) float_level = 0.0f;
             if (float_level > 8.0f) float_level = 8.0f;
 
-            if (float_level > band_peaks_prep[b]) band_peaks_prep[b] = float_level;
-            else band_peaks_prep[b] *= 0.90f; 
-            
-            current_bands[b] = (int)(band_peaks_prep[b] + 0.5f);
+            // Add the instantaneous level to our accumulator
+            band_accumulators[b] += float_level;
         }
 
-        write_pos += snprintf(write_buf + write_pos, 4096 - write_pos, 
-                              "%d %d %d %d %d %d %d\n",
-                              current_bands[0], current_bands[1], current_bands[2],
-                              current_bands[3], current_bands[4], current_bands[5], current_bands[6]);
+        frames_in_window++;
+        time_accumulated += frame_sec;
 
+        // Once we've accumulated enough time for our target FPS, average and write
+        if (time_accumulated >= target_window_sec) {
+            int current_bands[7] = {0};
+            for (int b = 0; b < 7; b++) {
+                float avg = band_accumulators[b] / frames_in_window;
+                current_bands[b] = (int)(avg + 0.5f); 
+                band_accumulators[b] = 0.0f;
+            }
+            
+            time_accumulated -= target_window_sec; 
+            frames_in_window = 0;
+
+            write_pos += snprintf(write_buf + write_pos, 4096 - write_pos, 
+                                  "%d %d %d %d %d %d %d\n",
+                                  current_bands[0], current_bands[1], current_bands[2],
+                                  current_bands[3], current_bands[4], current_bands[5], current_bands[6]);
+        }
+
+        // CRITICAL: This flushes the buffer before it overflows and causes NUL bytes
         if (write_pos >= 4096 - 100) {
             fwrite(write_buf, 1, write_pos, f_txt);
             write_pos = 0;
@@ -165,7 +197,26 @@ void visualizer_preprocess_file(const char* mp3_url) {
         if (++loop_counter % 10 == 0) vTaskDelay(pdMS_TO_TICKS(1));
     }
 
-    if (write_pos > 0) fwrite(write_buf, 1, write_pos, f_txt);
+    // The audio stream finished! Write any remaining accumulated data for the last partial frame.
+    if (frames_in_window > 0) {
+        int current_bands[7] = {0};
+        for (int b = 0; b < 7; b++) {
+            float avg = band_accumulators[b] / frames_in_window;
+            current_bands[b] = (int)(avg + 0.5f); 
+        }
+        write_pos += snprintf(write_buf + write_pos, 4096 - write_pos, 
+                              "%d %d %d %d %d %d %d\n",
+                              current_bands[0], current_bands[1], current_bands[2],
+                              current_bands[3], current_bands[4], current_bands[5], current_bands[6]);
+    }
+
+    // Flush whatever is left to the SD Card
+    if (write_pos > 0) {
+        fwrite(write_buf, 1, write_pos, f_txt);
+    }
+    
+    // Cleanly close the file
+    fflush(f_txt);
     fclose(f_txt);
     
     free(write_buf);
@@ -208,45 +259,55 @@ bool visualizer_is_running(void) {
 }
 
 void visualizer_task(void *pvParameters) {
-    int bands[7] = {0};
-    
-    // The pre-processor writes 1 line per 1024 samples. 
-    // At 44100Hz, that equals exactly 43.066 lines per second.
-    const float native_file_fps = 43.066f; 
-    const float lines_per_frame = native_file_fps / VISUALIZER_FPS;
-    float line_accumulator = 0.0f;
-    
+    int bands[NUM_BANDS];
+    int current_file_fps = TARGET_VISUALIZER_FPS; // Fallback default
+    TickType_t delay_ticks = pdMS_TO_TICKS(1000 / TARGET_VISUALIZER_FPS);
+    bool is_new_file = true;
+
     while (1) {
         if (vis_running && vis_file != NULL) {
             
-            // Calculate how many lines we need to read to catch up to the audio
-            line_accumulator += lines_per_frame;
-            int lines_to_read = (int)line_accumulator;
-            line_accumulator -= lines_to_read;
-
-            bool reached_eof = false;
-            
-            // Fast-forward through the file to stay perfectly synced
-            for (int i = 0; i < lines_to_read; i++) {
-                if (fscanf(vis_file, "%d %d %d %d %d %d %d", 
-                           &bands[0], &bands[1], &bands[2], &bands[3], 
-                           &bands[4], &bands[5], &bands[6]) != 7) {
-                    reached_eof = true;
-                    break;
+            // 1. If we just started playing a new file, read the FPS header first
+            if (is_new_file) {
+                if (fscanf(vis_file, "%d\n", &current_file_fps) == 1) {
+                    if (current_file_fps <= 0) current_file_fps = TARGET_VISUALIZER_FPS; // Sanity check
+                    delay_ticks = pdMS_TO_TICKS(1000 / current_file_fps);
                 }
+                is_new_file = false;
             }
 
-            if (!reached_eof) {
+            // 2. Read exactly one line of 7 bands
+            if (fscanf(vis_file, "%d %d %d %d %d %d %d", 
+                       &bands[0], &bands[1], &bands[2], &bands[3], 
+                       &bands[4], &bands[5], &bands[6]) == 7) {
+                
+                // 3. Push to the globally shared array safely using our Mutex
+                if (shared_state_mutex != NULL) {
+                    if (xSemaphoreTake(shared_state_mutex, portMAX_DELAY) == pdTRUE) {
+                        for (int i = 0; i < NUM_BANDS; i++) {
+                            // Convert the 0-8 integer into a float for the PID controller
+                            shared_target_heights[i] = (float)bands[i];
+                        }
+                        xSemaphoreGive(shared_state_mutex); // Always give it back!
+                    }
+                }
+
+                // Optional: Print to terminal so you can still watch it run in the console
                 print_terminal_eq(bands);
+
+                // 4. Wait for the exact duration of this frame before reading the next one
+                vTaskDelay(delay_ticks);
+                
             } else {
+                // We reached the end of the file (or it's corrupt)
                 visualizer_stop();
+                is_new_file = true; // Reset the flag for the next song
             }
+            
         } else {
-            // Reset the accumulator when paused so it doesn't skip upon resuming
-            line_accumulator = 0.0f; 
+            // Visualizer is paused or stopped
+            is_new_file = true; // Ensure we read the header next time we start
+            vTaskDelay(pdMS_TO_TICKS(100)); // Sleep peacefully
         }
-        
-        // Delay exactly the right amount of time for the requested FPS
-        vTaskDelay(pdMS_TO_TICKS(1000 / VISUALIZER_FPS));
     }
 }
