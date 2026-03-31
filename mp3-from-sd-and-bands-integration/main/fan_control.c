@@ -10,7 +10,7 @@
 static const char *TAG = "fan_control";
 
 // --- Configuration ---
-#define FAN_PWM_FREQ 25000
+#define FAN_PWM_FREQ 50
 #define FAN_PWM_RES LEDC_TIMER_10_BIT
 #define LEDC_TIMER LEDC_TIMER_0
 #define LEDC_MODE LEDC_LOW_SPEED_MODE
@@ -49,8 +49,8 @@ static uint32_t speed_to_duty(float speed_percent) {
 #define CONTROL_LOOP_MS 20
 #define PID_OUTPUT_MIN -50.0f
 #define PID_OUTPUT_MAX 50.0f
-#define FAN_MIN_PERCENT 0.0f
-#define FAN_MAX_PERCENT 100.0f
+#define FAN_MIN_PERCENT 60.0f
+#define FAN_MAX_PERCENT 80.0f
 
 static float clampf(float x, float lo, float hi) {
     if (x < lo) return lo;
@@ -219,6 +219,8 @@ void fan_control_task(void *pvParameters) {
 #endif
 
             // 3. Compute PID and update PWM
+            // ESP_LOGI(TAG, "Sensor read success: %d, Height: %d mm", read_success, height_mm);
+
             if (read_success) {
                 float output = pid_compute(&fan_pids[i], height_mm, dt_s);
                 float fan_percent = map_range(output, PID_OUTPUT_MIN, PID_OUTPUT_MAX, FAN_MIN_PERCENT, FAN_MAX_PERCENT);
