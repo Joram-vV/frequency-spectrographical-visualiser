@@ -1,3 +1,3 @@
-idf_component_register(SRCS "vl6180.c"
+idf_component_register(SRCS "pca9548a.c"
                     INCLUDE_DIRS "include"
                     REQUIRES esp_driver_i2c esp_driver_gpio)
