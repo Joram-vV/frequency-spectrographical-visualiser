@@ -1,6 +1,7 @@
 #include "lvgl_use.h"
+#include "now_playing_ui.h"
 #include "playback_controls_ui.h"
-#include "volume_ui.h"
+#include "esp_sleep.h"
 
 static const char *TAG = "lvgl";
 static _lock_t lvgl_api_lock;
@@ -162,10 +163,25 @@ static void increase_lvgl_tick(void *arg)
     lv_tick_inc(LVGL_TICK_PERIOD_MS);
 }
 
+static void sleep_until_wakeup_button(void)
+{
+    ESP_LOGI(TAG, "No touch for %d ms, entering light sleep", UI_SLEEP_TIMEOUT_MS);
+
+    gpio_set_level(PIN_NUM_BK_LIGHT, LCD_BK_LIGHT_OFF);
+    (void)esp_lcd_panel_disp_on_off(lcd_panel, false);
+
+    touch_state.pressed = false;
+    (void)esp_light_sleep_start();
+
+    (void)esp_lcd_panel_disp_on_off(lcd_panel, true);
+    ESP_ERROR_CHECK(esp_lcd_rgb_panel_restart(lcd_panel));
+    gpio_set_level(PIN_NUM_BK_LIGHT, LCD_BK_LIGHT_ON);
+    ESP_LOGI(TAG, "Woke up on GPIO %d", WAKEUP_BUTTON_GPIO);
+}
+
 static void lvgl_port_task(void *arg)
 {
-    int64_t last_touch_ui_update_us = 0;
-    int32_t last_touch_value = -1;
+    int64_t last_touch_activity_us = esp_timer_get_time();
     bool touch_pressed_filtered = false;
     uint8_t touch_release_stable_count = 0;
 
@@ -173,12 +189,14 @@ static void lvgl_port_task(void *arg)
 
     while (1) {
         uint32_t delay_ms;
-        int32_t touch_value = -1;
         bool middle_pressed_region;
         bool raw_pressed;
 
         poll_touch_controller();
         raw_pressed = touch_state.pressed;
+        if (raw_pressed) {
+            last_touch_activity_us = esp_timer_get_time();
+        }
 
         if (raw_pressed) {
             touch_pressed_filtered = true;
@@ -192,24 +210,22 @@ static void lvgl_port_task(void *arg)
         }
 
         middle_pressed_region = touch_pressed_filtered && touch_state.point.y < (LCD_V_RES - 100);
-        if (touch_pressed_filtered && touch_state.point.y >= (LCD_V_RES - 100)) {
-            touch_value = (touch_state.point.x * 100) / (LCD_H_RES - 1);
-        }
 
         _lock_acquire(&lvgl_api_lock);
         (void)playback_controls_ui_touch_update(&touch_state.point, middle_pressed_region);
-        if (touch_value >= 0 &&
-            (touch_value != last_touch_value) &&
-            (esp_timer_get_time() - last_touch_ui_update_us >= 30000)) {
-            volume_ui_set_value(touch_value);
-            last_touch_value = touch_value;
-            last_touch_ui_update_us = esp_timer_get_time();
-        }
         delay_ms = lv_timer_handler();
         _lock_release(&lvgl_api_lock);
 
         delay_ms = MAX(delay_ms, LVGL_TASK_MIN_DELAY);
         delay_ms = MIN(delay_ms, LVGL_TASK_MAX_DELAY);
+
+        if ((esp_timer_get_time() - last_touch_activity_us) >= ((int64_t)UI_SLEEP_TIMEOUT_MS * 1000)) {
+            sleep_until_wakeup_button();
+            last_touch_activity_us = esp_timer_get_time();
+            touch_pressed_filtered = false;
+            touch_release_stable_count = 0;
+        }
+
         usleep(delay_ms * 1000);
     }
 }
@@ -217,9 +233,24 @@ static void lvgl_port_task(void *arg)
 static void ui_init_task(void *arg)
 {
     (void)arg;
+    lv_obj_t *screen;
 
     _lock_acquire(&lvgl_api_lock);
-    volume_ui_create();
+    screen = lv_obj_create(NULL);
+    lv_obj_clear_flag(screen,
+                      LV_OBJ_FLAG_CLICKABLE |
+                          LV_OBJ_FLAG_SCROLLABLE |
+                          LV_OBJ_FLAG_SCROLL_ELASTIC |
+                          LV_OBJ_FLAG_SCROLL_MOMENTUM |
+                          LV_OBJ_FLAG_SCROLL_CHAIN_HOR |
+                          LV_OBJ_FLAG_SCROLL_CHAIN_VER |
+                          LV_OBJ_FLAG_GESTURE_BUBBLE);
+    lv_obj_set_scroll_dir(screen, LV_DIR_NONE);
+    lv_obj_set_scrollbar_mode(screen, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_style_pad_all(screen, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    now_playing_ui_create(screen);
+    playback_controls_ui_create(screen);
+    lv_scr_load(screen);
     _lock_release(&lvgl_api_lock);
 
     gpio_set_level(PIN_NUM_BK_LIGHT, LCD_BK_LIGHT_ON);

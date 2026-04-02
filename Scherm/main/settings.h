@@ -1,6 +1,7 @@
 #pragma once
 
 #include "driver/i2c.h"
+#include "driver/gpio.h"
 
 #define LCD_H_RES           800
 #define LCD_V_RES           480
@@ -57,3 +58,6 @@
 #define LVGL_TASK_PRIORITY  4
 #define LVGL_TASK_MIN_DELAY 1
 #define LVGL_TASK_MAX_DELAY 16
+
+#define UI_SLEEP_TIMEOUT_MS 40000
+#define WAKEUP_BUTTON_GPIO  GPIO_NUM_17

@@ -4,7 +4,6 @@ idf_component_register(
         "lvgl_use.c"
         "now_playing_ui.c"
         "playback_controls_ui.c"
-        "volume_ui.c"
         "main.c"
         
     INCLUDE_DIRS
