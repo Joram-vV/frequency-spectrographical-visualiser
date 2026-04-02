@@ -1,0 +1,6 @@
+#ifndef PRIORITIES_H
+#define PRIORITIES_H
+
+#define SD_CARD_MANAGER_PRIORITY 5
+
+#endif
