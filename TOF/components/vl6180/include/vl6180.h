@@ -15,8 +15,6 @@
 #define REG_SYSTEM_INTERRUPT 0x015
 
 // I2C settings to be used with the VL6180
-#define I2C_MASTER_SCL_IO 22
-#define I2C_MASTER_SDA_IO 21
 #define I2C_MASTER_FREQ_HZ 100000 // 100kHz standard mode
 
 #define VL6180X_MODEL_ID 0xB4 // Standard VL6180X model identification number
@@ -120,5 +118,7 @@ esp_err_t vl6180_init();
 esp_err_t vl6180_configure_default();
 esp_err_t vl6180_read_range(uint8_t *range);
 esp_err_t vl6180_get_model_id();
+
+esp_err_t vl6180_calibrate_offset(int8_t *calibrated_offset);
 
 #endif

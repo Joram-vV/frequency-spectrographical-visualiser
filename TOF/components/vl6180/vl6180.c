@@ -76,6 +76,66 @@ esp_err_t vl6180_probe()
     return i2c_master_probe(_dev_cfg.i2c_bus_handle, VL6180_I2C_ADDR, _dev_cfg.probe_timeout_ms);
 }
 
+/**
+ * @brief Performs manual offset calibration for the VL6180X.
+ * @note Ensure a target is placed exactly 50mm from the sensor before calling.
+ * @param calibrated_offset Pointer to store the calculated offset value.
+ * @return ESP_OK on success, or error code from I2C transactions.
+ */
+esp_err_t vl6180_calibrate_offset(int8_t *calibrated_offset)
+{
+    esp_err_t ret;
+    uint32_t sum_range = 0;
+    uint8_t current_range = 0;
+    const int samples = 10;
+    const int target_distance = 150; // mm, 150mm instead of 50mm from AN4545 since the VL6180 only started reading from 100+ mm
+
+    uint8_t prev_offset;
+    vl6180_read8(SYSRANGE__PART_TO_PART_RANGE_OFFSET, &prev_offset);
+    ESP_LOGD(TAG, "Previous offset: %d", prev_offset);
+
+    ret = vl6180_write8(SYSRANGE__PART_TO_PART_RANGE_OFFSET, 0x00);
+    if (ret != ESP_OK) return ret;
+
+    ESP_LOGI(TAG, "Starting calibration: Place target 50mm away...");
+    vTaskDelay(pdMS_TO_TICKS(500));
+
+    for (int i = 0; i < samples; i++)
+    {
+        ret = vl6180_read_range(&current_range);
+        if (ret != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Calibration failed at sample %d", i);
+            return ret;
+        }
+        sum_range += current_range;
+        ESP_LOGD(TAG, "Sample %d: %d mm", i, current_range);
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    // Formula: Offset = Target Distance - Average Measured Distance
+    int16_t average_range = (int16_t)(sum_range / samples);
+    int16_t offset_required = target_distance - average_range;
+
+    if (offset_required > 127) offset_required = 127;
+    if (offset_required < -128) offset_required = -128;
+
+    int8_t final_offset = (int8_t)offset_required;
+    ESP_LOGD(TAG, "Target range: %d | Average range: %d | Offset required %d | Final offset %d", target_distance, average_range, offset_required, final_offset);
+    
+    ret = vl6180_write8(SYSRANGE__PART_TO_PART_RANGE_OFFSET, (uint8_t)final_offset);
+    
+    if (ret == ESP_OK)
+    {
+        ESP_LOGI(TAG, "Calibration Complete. Avg: %dmm, New Offset: %d", average_range, final_offset);
+        if (calibrated_offset != NULL) {
+            *calibrated_offset = final_offset;
+        }
+    }
+
+    return ret;
+}
+
 esp_err_t vl6180_configure_default()
 {
 
