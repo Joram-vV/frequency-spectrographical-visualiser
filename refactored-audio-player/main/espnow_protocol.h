@@ -50,7 +50,7 @@ typedef struct {
     int32_t duration_seconds;
 } tel_status_t;
 
-// NEW: Payload for Playlist Telemetry
+// Payload for Playlist Telemetry
 typedef struct {
     int32_t start_index;      // The index of the first song in this packet (e.g., 0, 15, 30)
     int32_t total_songs;      // Total songs found on the SD card
