@@ -190,33 +190,47 @@ void app_main(void) {
     audio_board_key_init(set);
     audio_board_sdcard_init(set, SD_MODE_SPI);
 
+    printf("FUCK0");
+    
     sdcard_list_create(&sdcard_list_handle);
     sdcard_scan(sdcard_url_save_callback, "/sdcard", 0, (const char *[]) {"mp3"}, 1, sdcard_list_handle);
+
+    printf("FUCK2");
 
     // 2. Audio Hardware
     audio_board_handle_t board_handle = audio_board_init();
     audio_hal_ctrl_codec(board_handle->audio_hal, AUDIO_HAL_CODEC_MODE_DECODE, AUDIO_HAL_CTRL_START);
 
+    printf("FUCK3");
+
     // 3. Modules Initialization
     visualizer_init();
+    printf("FUCK4");
     audio_control_init();
+    printf("FUCK5");
     console_init(board_handle, sdcard_list_handle);
+
+    printf("FUCK6");
 
     fan_control_init();
 
+    printf("FUCK7");
+
     // Start the real-time fan control loop!
     xTaskCreatePinnedToCore(fan_control_task, "fan_control_task", 4096, NULL, 5, NULL, 1);
+
+    printf("FUCK8");
 
     ESP_LOGI(TAG, "Initializing ESP-NOW Transport...");
     espnow_transport_init();
     
     // Pass board_handle if you need it for volume control, otherwise NULL is fine
-    xTaskCreate(espnow_command_task, "espnow_cmd_task", 4096, NULL, 5, NULL);
+    xTaskCreate(espnow_command_task, "espnow_cmd_task", 8192, NULL, 5, NULL);
 
     // --- NEW: Push the playlist to the GUI ---
     // At this point, the SD card is scanned and the network is up.
     // We delay briefly just in case the GUI node is still booting up its Wi-Fi.
-    vTaskDelay(pdMS_TO_TICKS(1000)); 
+    // vTaskDelay(pdMS_TO_TICKS(1000)); 
     broadcast_playlist();
     // -----
 
@@ -234,8 +248,11 @@ void app_main(void) {
     // 5. Main Event Loop
     while (1) {
         audio_event_iface_msg_t msg;
-        if (audio_event_iface_listen(evt, &msg, portMAX_DELAY) != ESP_OK) continue;
-
+        if (audio_event_iface_listen(evt, &msg, portMAX_DELAY) != ESP_OK){
+            broadcast_playlist();
+            continue;
+        }
+        broadcast_playlist();
         if (msg.source_type == AUDIO_ELEMENT_TYPE_ELEMENT) {
             if (msg.source == (void *) audio_control_get_mp3_decoder() && msg.cmd == AEL_MSG_CMD_REPORT_MUSIC_INFO) {
                 audio_element_info_t music_info = {0};

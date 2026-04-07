@@ -17,12 +17,16 @@ static const char *TAG = "fan_control";
 #define LEDC_TIMER LEDC_TIMER_0
 #define LEDC_MODE LEDC_LOW_SPEED_MODE
 
-#define I2C_MASTER_SCL_IO 5
-#define I2C_MASTER_SDA_IO 6
+#define I2C_MASTER_SCL_IO 6
+#define I2C_MASTER_SDA_IO 7
 #define I2C_MASTER_FREQ_HZ 100000
 
+#define VL6180_RESET_IO 4
+
+#define TIJDELIJKE_BANDS 4
+
 // Define the 7 GPIOs for your 7 fans. (Adjust these pins as needed)
-const int FAN_PWM_GPIOS[NUM_BANDS] = {2, 2, 2, 2, 2, 2, 2};
+// const int FAN_PWM_GPIOS[NUM_BANDS] = {2, 2, 2, 2, 2, 2, 2};
 
 // Type for a structured VL6180 array (Multi-fan)
 #if !SINGLE_FAN_TEST_MODE
@@ -33,6 +37,7 @@ typedef struct
 } channel_t;
 channel_t vl6180_channels[NUM_BANDS];
 #endif
+const int FAN_PWM_GPIOS[NUM_BANDS] = {39, 40, 41, 42, 2, 5, 1}; 
 
 // State variables
 static PIDController fan_pids[NUM_BANDS];
@@ -62,8 +67,8 @@ static uint32_t speed_to_duty(float speed_percent)
 #define CONTROL_LOOP_MS 20
 #define PID_OUTPUT_MIN -50.0f
 #define PID_OUTPUT_MAX 50.0f
-#define FAN_MIN_PERCENT 60.0f
-#define FAN_MAX_PERCENT 80.0f
+#define FAN_MIN_PERCENT 0.0f
+#define FAN_MAX_PERCENT 100.0f
 
 static float clampf(float x, float lo, float hi)
 {
@@ -99,6 +104,28 @@ void fan_control_init(void)
 {
     ESP_LOGI(TAG, "Initializing Fan Control & I2C...");
 
+    // --- NEW: Force Hardware Reset of the Sensor ---
+    // This clears any stuck I2C states from previous code uploads.
+    if (VL6180_RESET_IO >= 0) {
+        gpio_config_t io_conf = {
+            .intr_type = GPIO_INTR_DISABLE,
+            .mode = GPIO_MODE_OUTPUT,
+            .pin_bit_mask = (1ULL << VL6180_RESET_IO),
+            .pull_down_en = 0,
+            .pull_up_en = 0
+        };
+        gpio_config(&io_conf);
+        
+        // Pull low to turn off the sensor
+        gpio_set_level(VL6180_RESET_IO, 0);
+        vTaskDelay(pdMS_TO_TICKS(10)); // Hold in reset
+        
+        // Pull high to boot it up fresh
+        gpio_set_level(VL6180_RESET_IO, 1);
+        vTaskDelay(pdMS_TO_TICKS(10)); // Give it time to boot before I2C init
+    }
+    // -----------------------------------------------
+
     // 1. Setup LEDC Timer (Once for all fans)
     ledc_timer_config_t timer_conf = {
         .speed_mode = LEDC_MODE,
@@ -111,8 +138,8 @@ void fan_control_init(void)
 
     // 2. Setup LEDC Channels and PIDs for all 7 fans
     // for (int i = 0; i < NUM_BANDS; i++) {
-    for (int i = 0; i < 1; i++)
-    {
+    for (int i = 0; i < TIJDELIJKE_BANDS; i++) {
+        printf("\n%d\n", i + 1);
         ledc_channel_config_t channel_conf = {
             .gpio_num = FAN_PWM_GPIOS[i],
             .speed_mode = LEDC_MODE,
@@ -272,8 +299,8 @@ void fan_control_task(void *pvParameters)
             // 3. Compute PID and update PWM
             ESP_LOGD(TAG, "Sensor read success: %d, Height: %d mm", read_success, height_mm);
 
-            if (read_success)
-            {
+            if (read_success) {
+                printf("%d-%d\t", i + 1, height_mm);
                 float output = pid_compute(&fan_pids[i], height_mm, dt_s);
                 float fan_percent = map_range(output, PID_OUTPUT_MIN, PID_OUTPUT_MAX, FAN_MIN_PERCENT, FAN_MAX_PERCENT);
 
@@ -282,5 +309,6 @@ void fan_control_task(void *pvParameters)
                 ledc_update_duty(LEDC_MODE, LEDC_CHANNEL_0 + i);
             }
         }
+        printf("\n");
     }
 }
