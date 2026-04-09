@@ -11,8 +11,9 @@
 
 // Message Categories
 typedef enum {
-    MSG_TYPE_COMMAND = 0,  
-    MSG_TYPE_TELEMETRY     
+	MSG_TYPE_COMMAND = 0,
+	MSG_TYPE_REQUEST,
+	MSG_TYPE_TELEMETRY
 } msg_type_t;
 
 // Commands (GUI -> Audio)
