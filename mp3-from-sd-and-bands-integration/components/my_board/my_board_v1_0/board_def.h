@@ -59,6 +59,8 @@
 #define ESP_SD_PIN_CD               -1
 #define ESP_SD_PIN_WP               -1
 
+#include "audio_hal.h"
+
 extern audio_hal_func_t AUDIO_NEW_CODEC_DEFAULT_HANDLE;
 
 #define AUDIO_CODEC_DEFAULT_CONFIG(){                   \
