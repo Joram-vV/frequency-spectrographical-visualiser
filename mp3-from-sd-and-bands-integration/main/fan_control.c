@@ -294,7 +294,7 @@ void fan_control_task(void *pvParameters) {
             // ESP_LOGI(TAG, "Sensor read success: %d, Height: %d mm", read_success, height_mm);
 
             if (read_success) {
-                // printf("%d-%d\t", i + 1, height_mm);
+                printf("%d-%d\t", i + 1, height_mm);
                 float output = pid_compute(&fan_pids[i], height_mm, dt_s);
                 float fan_percent = map_range(output, PID_OUTPUT_MIN, PID_OUTPUT_MAX, FAN_MIN_PERCENT, FAN_MAX_PERCENT);
                 
@@ -303,6 +303,6 @@ void fan_control_task(void *pvParameters) {
                 ledc_update_duty(LEDC_MODE, LEDC_CHANNEL_0 + i);
             }
         }
-        // printf("\n");
+        printf("\n");
     }
 }

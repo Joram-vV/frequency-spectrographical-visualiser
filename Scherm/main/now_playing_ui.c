@@ -77,9 +77,9 @@ static void async_status_update_cb(void *arg)
 		free(status);
 		return;
 	}
-	apply_current_song(status->current_song_index);
-	if (status->state == TEL_STATE_PAUSED) set_playing(false);
-	update_now_playing_title();
+
+	if (status->state == TEL_STATE_PAUSED) set_playing_song(status->current_song_index, false);
+	else set_playing_song(status->current_song_index, true);
 
 	now_playing_ui_set_song_progress(status->elapsed_seconds, status->duration_seconds);
 	free(status);

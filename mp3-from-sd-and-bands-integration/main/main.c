@@ -4,11 +4,11 @@
 #include "board.h"
 #include "audio_element.h"
 
+#include "freertos/idf_additions.h"
 #include "sdcard_scan.h"
 #include "audio_event_iface.h"
 
 #include "sd_card.h"
-#include "sys/stat.h"
 #include "sdcard_list.h"
 #include "filter_resample.h"
 #include <stdbool.h>
@@ -171,96 +171,6 @@ static void espnow_command_task(void *pvParameters) {
 	}
 }
 
-static const uint8_t SYNC_HEADER0 = 0xFF;
-static const uint8_t SYNC_HEADER1 = 0xE0;
-static const uint8_t VERSION_AND_LAYER_MASK = 0x1E;
-enum V_L_COMBINATIONS {
-	V1_L1 = 0x1E,
-	V1_L2 = 0x1C,
-	V1_L3 = 0x1A,
-	V2_L1 = 0x16,
-	V2_L2 = 0x14,
-	V2_L3 = 0x12,
-};
-
-int calculate_mp3_duration_ms(const char *filepath) {
-	struct stat st;
-	if (stat(filepath, &st) != 0) {
-		ESP_LOGW(TAG, "Filepath '%s' not valid.", filepath);
-		return 0;
-	}
-
-	long total_bytes = st.st_size;
-	int bitrate = 0;
-
-	FILE *f = fopen(filepath, "rb");
-	if (f) {
-		uint8_t header[4];
-		// Skip ID3 tag and find first sync word
-		while (fread(header, 1, 1, f)) {
-			if (header[0] == SYNC_HEADER0) {
-				fread(&header[1], 1, 3, f);
-				if ((header[1] & SYNC_HEADER1) == SYNC_HEADER1) { // Found Sync and is MPEG version 1 or 2
-					switch (header[1] & VERSION_AND_LAYER_MASK) {
-						case V1_L1: {
-							int bitrate_index = (header[2] >> 4) & 0x0F;
-							// Standard MPEG1 Layer 1 Table
-							static const int bitrates[] = {0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448, 0};
-							bitrate = bitrates[bitrate_index];
-							break;
-						}
-						case V1_L2: {
-							int bitrate_index = (header[2] >> 4) & 0x0F;
-							// Standard MPEG1 Layer 2 Table
-							static const int bitrates[] = {0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 0};
-							bitrate = bitrates[bitrate_index];
-							break;
-						}
-						case V1_L3: {
-							int bitrate_index = (header[2] >> 4) & 0x0F;
-							// Standard MPEG1 Layer 3 Table
-							static const int bitrates[] = {0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0};
-							bitrate = bitrates[bitrate_index];
-							break;
-						}
-						case V2_L1: {
-							int bitrate_index = (header[2] >> 4) & 0x0F;
-							// Standard MPEG2 Layer 1 Table
-							static const int bitrates[] = {0, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256, 0};
-							bitrate = bitrates[bitrate_index];
-							break;
-						}
-						case V2_L2:
-						case V2_L3: {
-							int bitrate_index = (header[2] >> 4) & 0x0F;
-							// Standard MPEG2 Layer 2 & 3 Table
-							static const int bitrates[] = {0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0};
-							bitrate = bitrates[bitrate_index];
-							break;
-						}
-						default:
-							break;
-					}
-				}
-			}
-		}
-		fclose(f);
-	}
-
-
-	if (bitrate <= 0) {
-		ESP_LOGW(TAG, "Bitrate is 0.");
-		bitrate = 128; //fallback bitrate
-	}
-
-	ESP_LOGI(TAG, "\nBitrate: %d, total bytes: %d, duration: %d\n", bitrate, total_bytes, (int)((total_bytes * 8) / bitrate));
-
-	// Duration (ms) = (Bytes * 8 bits) / (kbps)
-	// The 1000s cancel out to make the math simpler
-
-	return (int)((total_bytes * 8) / bitrate);
-}
-
 static void espnow_telemetry_task(void *pvParameters) {
 	espnow_packet_t packet;
 	packet.magic = ESPNOW_PROTOCOL_MAGIC;
@@ -296,26 +206,11 @@ static void espnow_telemetry_task(void *pvParameters) {
 			packet.payload.telemetry.data.status.elapsed_seconds = 0;
 		}
 
-		// 4. Get url id and music file size
-		static int song_id = -1;
-		static int song_duration = 0;
-		int tmp_song_id = sdcard_list_get_url_id(sdcard_list_handle);
-		if (song_id != tmp_song_id) {
-			song_id = tmp_song_id;
-
-			char* url = NULL;
-			sdcard_list_current(sdcard_list_handle, &url);
-			ESP_LOGI(TAG, "Is: %d, %s\n", url, url);
-
-			// skip the 'file:/' part
-			song_duration = calculate_mp3_duration_ms(url + 6) / 1000;
-		}
-
 		// 5. Set song index
-		packet.payload.telemetry.data.status.current_song_index = song_id;
+		packet.payload.telemetry.data.status.current_song_index = (int32_t) sdcard_list_get_url_id(sdcard_list_handle);
 
 		// 6. Calculate Total Duration (Using MP3 Bitrate and File Size)
-		packet.payload.telemetry.data.status.duration_seconds = (int32_t) song_duration;
+		packet.payload.telemetry.data.status.duration_seconds = get_song_duration();
 
 		ESP_LOGI(TAG, "\nData: { state = %d, song = %d, elapsed = %d, duration = %d }\n\n",
 				packet.payload.telemetry.data.status.state,
@@ -383,6 +278,10 @@ void app_main(void) {
 
 	// Inside app_main, near your other task creations:
 	xTaskCreate(espnow_telemetry_task, "telemetry_task", 4096, NULL, TELEMETRY_TASK_PRIORITY, NULL);
+
+	// broadcast playlist to online devices
+	vTaskDelay(500);
+	broadcast_playlist();
 
 	// 5. Main Event Loop
 	while (1) {
