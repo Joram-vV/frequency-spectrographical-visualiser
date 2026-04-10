@@ -25,6 +25,7 @@ static volatile bool vis_running = false;
 static FILE *vis_file = NULL;
 
 static void print_terminal_eq(int *bands) {
+    printf("\n");
     for (int b = 0; b < NUM_BANDS; b++) {
         printf("%d ", bands[b]);
     }

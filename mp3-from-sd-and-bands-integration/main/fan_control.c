@@ -10,21 +10,23 @@
 static const char *TAG = "fan_control";
 
 // --- Configuration ---
-#define FAN_PWM_FREQ 25000
+#define FAN_PWM_FREQ 50
 #define FAN_PWM_RES LEDC_TIMER_10_BIT
 #define LEDC_TIMER LEDC_TIMER_0
 #define LEDC_MODE LEDC_LOW_SPEED_MODE
 
-#define I2C_MASTER_SCL_IO 5
-#define I2C_MASTER_SDA_IO 6
+#define I2C_MASTER_SCL_IO 6
+#define I2C_MASTER_SDA_IO 7
 #define I2C_MASTER_FREQ_HZ 100000
 #define VL6180_RESET_IO 4
 
 #define TCA9548A_ADDR 0x70
 #define VL6180_ADDR 0x29
 
+#define TIJDELIJKE_BANDS 7
+
 // Define the 7 GPIOs for your 7 fans. (Adjust these pins as needed)
-const int FAN_PWM_GPIOS[NUM_BANDS] = {2, 2, 2, 2, 2, 2, 2}; 
+const int FAN_PWM_GPIOS[NUM_BANDS] = {39, 40, 41, 42, 2, 5, 1}; 
 
 // State variables
 static PIDController fan_pids[NUM_BANDS];
@@ -34,7 +36,7 @@ static i2c_master_dev_handle_t sensor_handles[NUM_BANDS] = {NULL}; // Store hand
 
 // --- Helper Functions from your code ---
 static uint8_t source_value_to_height(int source_value) {
-    static const uint8_t height_map[] = { 14, 32, 56, 79, 100, 115, 126, 135, 200 };
+    static const uint8_t height_map[] = { 0, 27, 50, 72, 95, 120, 135, 200, 255};
     if (source_value < 0 || source_value >= 9) return 0;
     return height_map[source_value];
 }
@@ -49,7 +51,7 @@ static uint32_t speed_to_duty(float speed_percent) {
 #define CONTROL_LOOP_MS 20
 #define PID_OUTPUT_MIN -50.0f
 #define PID_OUTPUT_MAX 50.0f
-#define FAN_MIN_PERCENT 0.0f
+#define FAN_MIN_PERCENT 65.0f
 #define FAN_MAX_PERCENT 100.0f
 
 static float clampf(float x, float lo, float hi) {
@@ -77,14 +79,42 @@ static bool read_height_mm(i2c_master_dev_handle_t dev_handle, uint8_t *distance
 
 // Function to switch Mux channel (only used if not in test mode)
 static void tca9548a_select_channel(uint8_t channel) {
-    if (mux_handle == NULL || channel > 7) return;
+    if (mux_handle == NULL || channel > 7){
+        // printf("\nkaas2.2\n");
+        return;
+    }
+    // printf("\nkaas2.2\n");
     uint8_t data = 1 << channel;
-    i2c_master_transmit(mux_handle, &data, 1, -1);
+    // printf("\nkaas2.3\n");
+    i2c_master_transmit(mux_handle, &data, 1, 50);
+    // printf("\nkaas2.4\n");
 }
 
 // --- Initialization ---
 void fan_control_init(void) {
     ESP_LOGI(TAG, "Initializing Fan Control & I2C...");
+
+    // --- NEW: Force Hardware Reset of the Sensor ---
+    // This clears any stuck I2C states from previous code uploads.
+    // if (VL6180_RESET_IO >= 0) {
+    //     gpio_config_t io_conf = {
+    //         .intr_type = GPIO_INTR_DISABLE,
+    //         .mode = GPIO_MODE_OUTPUT,
+    //         .pin_bit_mask = (1ULL << VL6180_RESET_IO),
+    //         .pull_down_en = 0,
+    //         .pull_up_en = 0
+    //     };
+    //     gpio_config(&io_conf);
+        
+    //     // Pull low to turn off the sensor
+    //     gpio_set_level(VL6180_RESET_IO, 0);
+    //     vTaskDelay(pdMS_TO_TICKS(10)); // Hold in reset
+        
+    //     // Pull high to boot it up fresh
+    //     gpio_set_level(VL6180_RESET_IO, 1);
+    //     vTaskDelay(pdMS_TO_TICKS(10)); // Give it time to boot before I2C init
+    // }
+    // -----------------------------------------------
 
     // 1. Setup LEDC Timer (Once for all fans)
     ledc_timer_config_t timer_conf = {
@@ -98,7 +128,9 @@ void fan_control_init(void) {
 
     // 2. Setup LEDC Channels and PIDs for all 7 fans
     // for (int i = 0; i < NUM_BANDS; i++) {
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < TIJDELIJKE_BANDS; i++) {
+        // if(i == 5) continue;
+        printf("\n%d\n", i + 1);
         ledc_channel_config_t channel_conf = {
             .gpio_num = FAN_PWM_GPIOS[i],
             .speed_mode = LEDC_MODE,
@@ -110,7 +142,7 @@ void fan_control_init(void) {
         ESP_ERROR_CHECK(ledc_channel_config(&channel_conf));
         
         // Initialize PID with your custom limits
-        pid_init(&fan_pids[i], 1.2f, 0.4f, 0.05f, -50.0f, 50.0f);
+        pid_init(&fan_pids[i], 1.5f, 0.5f, 0.2f, -50.0f, 50.0f);
     }
 
     // 3. Setup I2C Master Bus
@@ -160,15 +192,51 @@ void fan_control_init(void) {
     };
 
     vTaskDelay(pdMS_TO_TICKS(500));
-
-    for(int i = 0; i < NUM_BANDS; i++) {
+    // for(int i = 0; i < NUM_BANDS; i++) {
+    for(int i = 0; i < TIJDELIJKE_BANDS; i++) {
+        // if(i == 5) continue;
+        printf("\n%d\n", i + 1);
         ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &sensor_handles[i]));
+        // printf("\nkaas1\n");
         tca9548a_select_channel(i);
+        // printf("\nkaas2\n");
         if (vl6180_init(sensor_handles[i], VL6180_RESET_IO) && vl6180_configure_default(sensor_handles[i]) == ESP_OK) {
+            // printf("\nkaas2.5\n");
             ESP_LOGI(TAG, "VL6180 Initialized on Mux Channel %d", i);
+            // printf("\nkaas2.6\n");
         }
+        // printf("\nkaas1\n");
     }
-#endif
+
+    tca9548a_select_channel(0);
+    vl6180_set_offset(sensor_handles[0], 6);
+    vTaskDelay(pdMS_TO_TICKS(20));
+    
+    tca9548a_select_channel(1);
+    vl6180_set_offset(sensor_handles[1], 4);
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    tca9548a_select_channel(2);
+    vl6180_set_offset(sensor_handles[2], 115);
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    tca9548a_select_channel(3);
+    vl6180_set_offset(sensor_handles[3], -14);
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    tca9548a_select_channel(4);
+    vl6180_set_offset(sensor_handles[4], 9);
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    tca9548a_select_channel(5);
+    vl6180_set_offset(sensor_handles[5], 16);
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    tca9548a_select_channel(6);
+    vl6180_set_offset(sensor_handles[6], 115);
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    #endif
 }
 
 void fan_control_task(void *pvParameters) {
@@ -186,7 +254,8 @@ void fan_control_task(void *pvParameters) {
         if (shared_state_mutex != NULL) {
             // We use a timeout of 0 (no blocking). If the visualizer is currently writing to it, 
             // we just skip reading this cycle and use the old values to keep the 20ms loop perfectly timed.
-            if (xSemaphoreTake(shared_state_mutex, 0) == pdTRUE) { 
+            if (xSemaphoreTake(shared_state_mutex, 0) == pdTRUE) {
+                // for (int i = 0; i < NUM_BANDS; i++) {
                 for (int i = 0; i < NUM_BANDS; i++) {
                     local_target_bands[i] = shared_target_heights[i];
                 }
@@ -195,7 +264,10 @@ void fan_control_task(void *pvParameters) {
         }
 
         // 2. Process each of the 7 fans
-        for (int i = 0; i < NUM_BANDS; i++) {
+        // for (int i = 0; i < NUM_BANDS; i++) {
+        for (int i = 0; i < TIJDELIJKE_BANDS; i++) {
+            // if(i == 5) continue;
+            // printf("\n%d\n", i + 1);
             
             // Map the 0-8 visualizer level to a physical mm setpoint
             int band_level = (int)(local_target_bands[i] + 0.5f);
@@ -219,7 +291,10 @@ void fan_control_task(void *pvParameters) {
 #endif
 
             // 3. Compute PID and update PWM
+            // ESP_LOGI(TAG, "Sensor read success: %d, Height: %d mm", read_success, height_mm);
+
             if (read_success) {
+                // printf("%d-%d\t", i + 1, height_mm);
                 float output = pid_compute(&fan_pids[i], height_mm, dt_s);
                 float fan_percent = map_range(output, PID_OUTPUT_MIN, PID_OUTPUT_MAX, FAN_MIN_PERCENT, FAN_MAX_PERCENT);
                 
@@ -228,5 +303,6 @@ void fan_control_task(void *pvParameters) {
                 ledc_update_duty(LEDC_MODE, LEDC_CHANNEL_0 + i);
             }
         }
+        // printf("\n");
     }
 }

@@ -1,13 +1,8 @@
-#include "audio_element.h"
 #include "esp_log.h"
 #include "esp_log_level.h"
 #include "esp_peripherals.h"
 #include "board.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/idf_additions.h"
-#include "freertos/projdefs.h"
 #include "periph_sdcard.h"
-#include "portmacro.h"
 #include "sdcard_scan.h"
 #include "audio_event_iface.h"
 
@@ -19,8 +14,6 @@
 #include "audio_control.h"
 #include "espnow_protocol.h"
 #include "espnow_transport.h"
-#include <stdint.h>
-#include <string.h>
 
 #include "fan_control.h"
 
@@ -218,7 +211,7 @@ void app_main(void) {
     espnow_transport_init();
     
     // Pass board_handle if you need it for volume control, otherwise NULL is fine
-    xTaskCreate(espnow_command_task, "espnow_cmd_task", 4096, NULL, 5, NULL);
+    xTaskCreate(espnow_command_task, "espnow_cmd_task", 8192, NULL, 5, NULL);
 
     // --- NEW: Push the playlist to the GUI ---
     // At this point, the SD card is scanned and the network is up.
@@ -236,7 +229,6 @@ void app_main(void) {
 
     ESP_LOGI(TAG, "System Ready. Waiting for commands.");
 
-    // create console task
     xTaskCreate(console_task, "console_task", 4096, NULL, 4, NULL);
 
     // 5. Main Event Loop

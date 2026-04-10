@@ -16,9 +16,7 @@ float pid_compute(PIDController* pid, int input, float dt) {
         return 0.0f;
     }
 
-    // Reverse-acting loop for this plant:
-    // more output (fan) should reduce measured distance.
-    float error = input - pid->setpoint;
+    float error = pid->setpoint - input;
     pid->integral += error * dt;
 
     // Prevent integral windup from dominating the output.
