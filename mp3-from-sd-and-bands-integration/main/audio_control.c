@@ -9,6 +9,11 @@
 #include "mp3_decoder.h"
 #include "filter_resample.h"
 #include "sys/stat.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+ 
+#define FAN_INERTIA_DELAY_MS 1000
+ 
 
 static audio_pipeline_handle_t pipeline;
 static audio_element_handle_t i2s_stream_writer, mp3_decoder, fatfs_stream_reader, rsp_handle;
@@ -159,6 +164,7 @@ void audio_control_play_track(const char *url) {
     audio_pipeline_change_state(pipeline, AEL_STATE_INIT);
 
     visualizer_start(url);
+    vTaskDelay(pdMS_TO_TICKS(FAN_INERTIA_DELAY_MS));
     audio_pipeline_run(pipeline);
 }
 

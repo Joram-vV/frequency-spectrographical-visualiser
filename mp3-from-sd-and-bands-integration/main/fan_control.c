@@ -36,7 +36,7 @@ static i2c_master_dev_handle_t sensor_handles[NUM_BANDS] = {NULL}; // Store hand
 
 // --- Helper Functions from your code ---
 static uint8_t source_value_to_height(int source_value) {
-    static const uint8_t height_map[] = { 0, 27, 50, 72, 95, 120, 135, 200, 255};
+    static const uint8_t height_map[] = { 14, 27, 50, 72, 95, 120, 135, 200, 255};
     if (source_value < 0 || source_value >= 9) return 0;
     return height_map[source_value];
 }
