@@ -25,6 +25,8 @@
 #ifndef _AUDIO_BOARD_DEFINITION_H_
 #define _AUDIO_BOARD_DEFINITION_H_
 
+#include "audio_hal.h"
+
 #define BUTTON_VOLUP_ID           0     /* You need to define the GPIO pins of your board */
 #define BUTTON_VOLDOWN_ID         1     /* You need to define the GPIO pins of your board */
 #define BUTTON_MUTE_ID            2     /* You need to define the GPIO pins of your board */

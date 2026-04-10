@@ -102,5 +102,6 @@ int get_url_from_filename(char *filename, char * url_buff, int buff_size){
 
 audio_pipeline_handle_t audio_control_get_pipeline(void) { return pipeline; }
 audio_element_handle_t audio_control_get_i2s_writer(void) { return i2s_stream_writer; }
+audio_element_handle_t audio_control_get_fatfs_reader(void) { return fatfs_stream_reader; }
 audio_element_handle_t audio_control_get_mp3_decoder(void) { return mp3_decoder; }
 audio_element_handle_t audio_control_get_rsp_handle(void) { return rsp_handle; }
