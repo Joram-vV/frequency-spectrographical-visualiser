@@ -24,6 +24,8 @@
 
 #include "shared_state.h"
 
+#include "esp_task_wdt.h"
+
 // Actual instantiation of the shared variables
 float shared_target_heights[NUM_BANDS] = {0.0f};
 SemaphoreHandle_t shared_state_mutex = NULL;
@@ -231,6 +233,16 @@ void app_main(void) {
 	esp_log_level_set("PLAYLIST_SDCARD", ESP_LOG_INFO);
 
 	ESP_LOGI(TAG, "Initializing System...");
+
+	ESP_LOGI(TAG, "Setting up watchdog.");
+	if (esp_task_wdt_deinit() != ESP_OK) return;
+	esp_task_wdt_config_t wdt_config = {
+		.timeout_ms = 5000,                                  // 5-second timeout
+		.idle_core_mask = (1 << portNUM_PROCESSORS) - 1,     // Monitor idle tasks on all cores
+		.trigger_panic = true                                // Reboot if watchdog starves
+	};
+	ESP_ERROR_CHECK(esp_task_wdt_init(&wdt_config));
+	ESP_LOGI(TAG, "Watchdog ready.");
 
 	// Initialize the shared state mutex
 	shared_state_mutex = xSemaphoreCreateMutex();

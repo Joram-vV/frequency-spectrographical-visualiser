@@ -7,6 +7,8 @@
 #include "pid_controller.h"
 #include "vl6180.h"
 
+#include "esp_task_wdt.h"
+
 static const char *TAG = "fan_control";
 
 // --- Configuration ---
@@ -247,8 +249,14 @@ void fan_control_task(void *pvParameters) {
     // Local array to hold the heights so we don't lock up the Mutex for long
     float local_target_bands[NUM_BANDS] = {0};
 
+    // Enable watchdog on this task
+    ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
+
     while (1) {
         vTaskDelayUntil(&xLastWakeTime, xInterval);
+
+        // Tell watchdog task is still alive
+        esp_task_wdt_reset();
 
         // 1. Safely grab the latest 0-8 band data from the visualizer
         if (shared_state_mutex != NULL) {

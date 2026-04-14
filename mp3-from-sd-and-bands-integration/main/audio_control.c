@@ -12,7 +12,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
  
-#define FAN_INERTIA_DELAY_MS 1000
+#define FAN_INERTIA_DELAY_MS 700
  
 
 static audio_pipeline_handle_t pipeline;
