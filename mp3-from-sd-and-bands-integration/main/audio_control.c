@@ -175,8 +175,11 @@ void audio_control_pause(void) {
 }
 
 void audio_control_resume(void) {
+    if (audio_pipeline_resume(pipeline) != ESP_OK) {
+		printf("\n[ INFO ] Could not resume audio.\n");
+		return;
+	}
 	visualizer_resume();
-    audio_pipeline_resume(pipeline);
     printf("\033[2J");
     printf("\n[ INFO ] Resumed.\n");
     // visualizer state will be restored if needed via state vars.

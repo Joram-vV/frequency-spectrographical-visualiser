@@ -237,9 +237,9 @@ void app_main(void) {
 	ESP_LOGI(TAG, "Setting up watchdog.");
 	if (esp_task_wdt_deinit() != ESP_OK) return;
 	esp_task_wdt_config_t wdt_config = {
-		.timeout_ms = 5000,                                  // 5-second timeout
-		.idle_core_mask = (1 << portNUM_PROCESSORS) - 1,     // Monitor idle tasks on all cores
-		.trigger_panic = true                                // Reboot if watchdog starves
+		.timeout_ms = 5000,
+		.idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
+		.trigger_panic = true
 	};
 	ESP_ERROR_CHECK(esp_task_wdt_init(&wdt_config));
 	ESP_LOGI(TAG, "Watchdog ready.");
