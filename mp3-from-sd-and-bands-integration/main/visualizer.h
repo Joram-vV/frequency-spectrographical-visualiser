@@ -6,6 +6,8 @@
 void visualizer_init(void);
 void visualizer_preprocess_file(const char* mp3_url);
 void visualizer_start(const char* url);
+void visualizer_pause(void);
+void visualizer_resume(void);
 void visualizer_stop(void);
 void visualizer_task(void *pvParameters);
 bool visualizer_is_running(void);

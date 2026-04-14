@@ -22,7 +22,7 @@ static float window[FFT_SIZE];
 static const int msg_limits[8] = {1, 2, 5, 12, 30, 80, 200, 450};
 
 static volatile bool vis_running = false;
-static FILE *vis_file = NULL;
+static volatile FILE *vis_file = NULL;
 
 static void print_terminal_eq(int *bands) {
     printf("\n");
@@ -247,6 +247,20 @@ void visualizer_start(const char* url) {
     }
 }
 
+void visualizer_pause(void) {
+    vis_running = false;
+    printf("[ INFO ] Visualizer Paused\n");
+}
+
+void visualizer_resume(void) {
+    if (vis_file != NULL) {
+        vis_running = true;
+        printf("[ INFO ] Visualizer Resumed\n");
+    } else {
+        printf("[ ERROR ] Cannot resume: No file open\n");
+    }
+}
+
 void visualizer_stop(void) {
     vis_running = false;
     if (vis_file) {
@@ -307,8 +321,17 @@ void visualizer_task(void *pvParameters) {
             
         } else {
             // Visualizer is paused or stopped
-            is_new_file = true; // Ensure we read the header next time we start
-            vTaskDelay(pdMS_TO_TICKS(100)); // Sleep peacefully
+            if (shared_state_mutex != NULL) {
+                    if (xSemaphoreTake(shared_state_mutex, portMAX_DELAY) == pdTRUE) {
+                        for (int i = 0; i < NUM_BANDS; i++) {
+                            // Convert the 0-8 integer into a float for the PID controller
+                            shared_target_heights[i] = 0.0f;
+                        }
+                        xSemaphoreGive(shared_state_mutex); // Always give it back!
+                    }
+                }
+            if (vis_file == NULL) is_new_file = true; // Ensure we read the header next time we start
+            vTaskDelay(pdMS_TO_TICKS(10)); // Sleep peacefully
         }
     }
 }

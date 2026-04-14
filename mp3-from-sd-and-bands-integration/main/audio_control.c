@@ -169,12 +169,13 @@ void audio_control_play_track(const char *url) {
 }
 
 void audio_control_pause(void) {
+	visualizer_pause();
     audio_pipeline_pause(pipeline);
-    visualizer_stop();
     printf("\n[ INFO ] Paused.\n");
 }
 
 void audio_control_resume(void) {
+	visualizer_resume();
     audio_pipeline_resume(pipeline);
     printf("\033[2J");
     printf("\n[ INFO ] Resumed.\n");
