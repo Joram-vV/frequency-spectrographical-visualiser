@@ -263,9 +263,6 @@ void app_main(void) {
 	audio_control_init();
 	console_init(board_handle, sdcard_list_handle);
 
-	sdcard_list_create(&sdcard_list_handle);
-	sdcard_scan(sdcard_url_save_callback, "/sdcard", 0, (const char *[]) {"mp3"}, 1, sdcard_list_handle);
-
 	fan_control_init();
 
 	// Start the real-time fan control loop!
@@ -291,14 +288,40 @@ void app_main(void) {
 	// Inside app_main, near your other task creations:
 	xTaskCreate(espnow_telemetry_task, "telemetry_task", 4096, NULL, TELEMETRY_TASK_PRIORITY, NULL);
 
-	// broadcast playlist to online devices
-	vTaskDelay(500);
-	broadcast_playlist();
+	// // broadcast playlist to online devices
+	// vTaskDelay(500);
+	// broadcast_playlist();
 
 	// 5. Main Event Loop
 	while (1) {
+		if (!is_sd_card_mounted()) {
+			ESP_LOGW(TAG, "Waiting for SD card to be mounted...");
+			if (sdcard_list_handle != NULL) {
+				// If the card was pulled, we should probably destroy the old handle
+				// sdcard_list_destroy(playlist);
+				sdcard_list_handle = NULL;
+			}
+			vTaskDelay(pdMS_TO_TICKS(100));
+			continue;
+		}
+
+		if (sdcard_list_handle == NULL) {
+			ESP_LOGI(TAG, "SD mounted. Creating playlist handle...");
+			if (sdcard_list_create(&sdcard_list_handle) != ESP_OK) {
+				ESP_LOGE(TAG, "Failed to create playlist. Retrying...");
+				vTaskDelay(pdMS_TO_TICKS(100));
+				continue;
+			}
+		}
+
+		if (sdcard_list_get_url_num(sdcard_list_handle) <= 0) {
+			ESP_LOGI(TAG, "Scanning SD-card.");
+			ESP_ERROR_CHECK(sdcard_scan(sdcard_url_save_callback, SD_CARD_MOUNT_POINT, 0, (const char *[]) {"mp3"}, 1, sdcard_list_handle));
+			broadcast_playlist();
+		}
+
 		audio_event_iface_msg_t msg;
-		if (audio_event_iface_listen(evt, &msg, portMAX_DELAY) != ESP_OK) continue;
+		if (audio_event_iface_listen(evt, &msg, pdMS_TO_TICKS(200)) != ESP_OK) continue;
 
 		if (msg.source_type == AUDIO_ELEMENT_TYPE_ELEMENT) {
 			if (msg.source == (void *) audio_control_get_mp3_decoder() && msg.cmd == AEL_MSG_CMD_REPORT_MUSIC_INFO) {

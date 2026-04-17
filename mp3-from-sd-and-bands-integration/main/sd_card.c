@@ -4,7 +4,6 @@
 #include "esp_err.h"
 
 #include "esp_log.h"
-#include "esp_system.h"
 
 #include "board_def.h"
 
@@ -73,12 +72,11 @@ void sd_card_manager(void* pv) {
 				// Use the official unmount which cleans up the VFS and the card object
 				esp_vfs_fat_sdcard_unmount(SD_CARD_MOUNT_POINT, card);
 				card = NULL;
-				esp_restart();
 			}
 		}
 
 		// Poll every 1 second.
-		vTaskDelay(pdMS_TO_TICKS(1000));
+		vTaskDelay(pdMS_TO_TICKS(500));
 	}
 }
 TaskHandle_t sd_card_manager_handle;
