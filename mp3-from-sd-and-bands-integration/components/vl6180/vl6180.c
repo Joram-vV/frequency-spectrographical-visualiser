@@ -286,3 +286,15 @@ esp_err_t vl6180_read_range(i2c_master_dev_handle_t dev_handle, uint8_t *range, 
 
     return err;
 }
+
+esp_err_t vl6180_set_offset(i2c_master_dev_handle_t dev_handle, int offset)
+{
+    esp_err_t ret = vl6180_write8(dev_handle, SYSRANGE__PART_TO_PART_RANGE_OFFSET, (uint8_t)offset);
+
+    if (ret == ESP_OK)
+    {
+        ESP_LOGI(TAG, "Set Offset: %d", offset);
+    }
+
+    return ret;
+}

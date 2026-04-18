@@ -12,7 +12,10 @@ int get_url_from_filename(char *filename, char * url_buff, int buff_size);
 
 audio_pipeline_handle_t audio_control_get_pipeline(void);
 audio_element_handle_t audio_control_get_i2s_writer(void);
+audio_element_handle_t audio_control_get_fatfs_reader(void);
 audio_element_handle_t audio_control_get_mp3_decoder(void);
 audio_element_handle_t audio_control_get_rsp_handle(void);
+
+int32_t get_song_duration(void);
 
 #endif // AUDIO_CONTROL_H

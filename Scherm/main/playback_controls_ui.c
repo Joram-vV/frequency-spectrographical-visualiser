@@ -49,6 +49,23 @@ static lv_point_t middle_touch_start;
 static lv_point_t middle_touch_last;
 static char now_playing_title[128];
 
+void set_playing_song(int32_t index, bool playing)
+{
+	if (actual_song_count == 0 || index < 0 || index >= actual_song_count) {
+		return;
+	}
+
+	is_playing = playing;
+
+	if (playing) {
+		now_playing_ui_set_song_title(remote_songs[index]);
+		return;
+	}
+
+	snprintf(now_playing_title, sizeof(now_playing_title), "%s - paused", remote_songs[index]);
+	now_playing_ui_set_song_title(now_playing_title);
+}
+
 static void reset_touch_tracking(void)
 {
     middle_touch_active = false;
@@ -127,7 +144,7 @@ static void apply_current_song(int32_t index)
     current_song_index = index;
     set_selected_song(index);
     now_playing_ui_set_song_title(remote_songs[index]);
-    now_playing_ui_set_song_progress(0, 100); // Reset progress visually
+    now_playing_ui_set_song_progress(0, 0); // Reset progress visually
 }
 
 static void update_now_playing_title(void)

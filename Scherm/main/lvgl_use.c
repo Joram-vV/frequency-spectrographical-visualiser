@@ -1,6 +1,8 @@
 #include "lvgl_use.h"
 #include "espnow_protocol.h"
 #include "espnow_transport.h"
+#include "freertos/idf_additions.h"
+#include "freertos/projdefs.h"
 #include "now_playing_ui.h"
 #include "playback_controls_ui.h"
 #include "esp_sleep.h"
@@ -172,13 +174,24 @@ static void sleep_until_wakeup_button(void)
 	gpio_set_level(PIN_NUM_BK_LIGHT, LCD_BK_LIGHT_OFF);
 	(void)esp_lcd_panel_disp_on_off(lcd_panel, false);
 
+	esp_timer_stop(lvgl_tick_timer);
+
+	vTaskDelay(pdMS_TO_TICKS(100));
+
 	touch_state.pressed = false;
+
+	// enter sleep
+
 	(void)esp_light_sleep_start();
 
-	(void)esp_lcd_panel_disp_on_off(lcd_panel, true);
+	// exit sleep
+
 	ESP_ERROR_CHECK(esp_lcd_rgb_panel_restart(lcd_panel));
+	(void)esp_lcd_panel_disp_on_off(lcd_panel, true);
 	gpio_set_level(PIN_NUM_BK_LIGHT, LCD_BK_LIGHT_ON);
 	ESP_LOGI(TAG, "Woke up on GPIO %d", WAKEUP_BUTTON_GPIO);
+
+	esp_timer_restart(lvgl_tick_timer, LVGL_TICK_PERIOD_MS * 1000);
 
 	static espnow_packet_t packet = {
 		.type = MSG_TYPE_REQUEST
@@ -233,7 +246,7 @@ static void lvgl_port_task(void *arg)
 			touch_release_stable_count = 0;
 		}
 
-		usleep(delay_ms * 1000);
+		vTaskDelay(pdMS_TO_TICKS(delay_ms));
 	}
 }
 

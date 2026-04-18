@@ -16,6 +16,7 @@ esp_err_t vl6180_read8(i2c_master_dev_handle_t dev_handle, uint16_t reg, uint8_t
 esp_err_t vl6180_init(i2c_master_dev_handle_t dev_handle, gpio_num_t reset_gpio);
 esp_err_t vl6180_configure_default(i2c_master_dev_handle_t dev_handle);
 esp_err_t vl6180_read_range(i2c_master_dev_handle_t dev_handle, uint8_t *range, uint32_t io_timeout_ms);
+esp_err_t vl6180_set_offset(i2c_master_dev_handle_t dev_handle, int offset);
 
 
 #endif
