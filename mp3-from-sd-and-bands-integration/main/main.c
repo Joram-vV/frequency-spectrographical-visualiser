@@ -263,6 +263,8 @@ void app_main(void) {
 	audio_control_init();
 	console_init(board_handle, sdcard_list_handle);
 
+
+	ESP_LOGI(TAG, "Setting up fans.");
 	fan_control_init();
 
 	// Start the real-time fan control loop!
