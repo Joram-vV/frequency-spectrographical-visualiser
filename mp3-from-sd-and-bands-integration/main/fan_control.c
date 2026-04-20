@@ -1,4 +1,5 @@
 #include "fan_control.h"
+#include "esp_err.h"
 #include "shared_state.h"
 #include "driver/ledc.h"
 #include "esp_log.h"
@@ -132,7 +133,7 @@ void fan_control_init(void) {
     // for (int i = 0; i < NUM_BANDS; i++) {
     for (int i = 0; i < TIJDELIJKE_BANDS; i++) {
         // if(i == 5) continue;
-        printf("\n%d\n", i + 1);
+        ESP_LOGI(TAG,"Set up channel %d", i + 1);
         ledc_channel_config_t channel_conf = {
             .gpio_num = FAN_PWM_GPIOS[i],
             .speed_mode = LEDC_MODE,
@@ -197,16 +198,19 @@ void fan_control_init(void) {
     // for(int i = 0; i < NUM_BANDS; i++) {
     for(int i = 0; i < TIJDELIJKE_BANDS; i++) {
         // if(i == 5) continue;
-        printf("\n%d\n", i + 1);
+        ESP_LOGI(TAG,"Set up sensor %d", i + 1);
         ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &sensor_handles[i]));
         // printf("\nkaas1\n");
         tca9548a_select_channel(i);
         // printf("\nkaas2\n");
-        if (vl6180_init(sensor_handles[i], VL6180_RESET_IO) && vl6180_configure_default(sensor_handles[i]) == ESP_OK) {
+        esp_err_t init_ret = vl6180_init(sensor_handles[i], VL6180_RESET_IO);
+        esp_err_t configure_ret = vl6180_configure_default(sensor_handles[i]);
+        if ((init_ret == ESP_OK) && (configure_ret == ESP_OK)) {
             // printf("\nkaas2.5\n");
             ESP_LOGI(TAG, "VL6180 Initialized on Mux Channel %d", i);
             // printf("\nkaas2.6\n");
         }
+        else ESP_LOGW(TAG, "Could not init on Mux Channel %d. Init code 0x%02X, configure code 0x%02X", i, init_ret, configure_ret);
         // printf("\nkaas1\n");
     }
 
